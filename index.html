@@ -254,6 +254,10 @@ body.dragging-active,body.dragging-active *{user-select:none;cursor:grabbing!imp
 .seg{max-width:100%;overflow-x:auto;scrollbar-width:none}
 @media (max-width:640px){.cal{gap:3px}.cal-head{gap:3px}.cal-day{min-height:56px;padding:3px}.cal-evs{flex-direction:row;flex-wrap:wrap;gap:3px}
   .ev,.ev.cont{font-size:0;width:8px;height:8px;padding:0;border:0;border-radius:50%;background:var(--c)}.more{display:none}}
+.plan-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,270px),1fr));gap:4px 18px;margin-top:6px}
+.plan-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:5px 0;border-bottom:1px dashed var(--line);font-size:14px;min-width:0}
+.plan-row select{width:auto;max-width:62%;padding:5px 8px;font-size:14px}
+.plan-row.off{color:var(--muted)}
 .thumbs{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px}
 .thumb{position:relative;aspect-ratio:3/2;border-radius:8px;overflow:hidden;background:var(--surface-2);max-width:100%}
 .thumb img{width:100%;height:100%;object-fit:cover;display:block}
@@ -481,15 +485,21 @@ function defaults(){const t=today();return{
     {id:uid(),title:'Example: reply to project emails',due:t,pri:'high',done:false,links:[{id:uid(),url:'https://mail.google.com',label:'Inbox'}]},
     {id:uid(),title:'Example: draft weekly status update',due:addDays(t,2),pri:'normal',done:false},
     {id:uid(),title:'Example: renew parking pass',due:'',pri:'low',done:false}],
-  trips:[{id:uid(),name:'Example: mountain weekend',dest:'Delete this and add your own trip',start:'2026-11-13',end:'2026-11-16',pto:2,notes:'',items:[{id:uid(),text:'Book a place to stay',done:false},{id:uid(),text:'Pack hiking boots',done:false}]}],
-  pto:{start:10,startDate:'2026-10-19',per:10,entries:[]},
+  units:'hours',
+  trips:[{id:uid(),name:'Example: mountain weekend',dest:'Delete this and add your own trip',start:'2026-11-13',end:'2026-11-16',hours:16,plan:{},links:[],notes:'',items:[{id:uid(),text:'Book a place to stay',done:false},{id:uid(),text:'Pack hiking boots',done:false}]}],
+  pto:{start:10,startDate:'2026-10-19',per:10,hpd:8,entries:[]},
   personal:{perYear:16,year:2026,left:8,carry:false,entries:[]},
   bg:{mode:'photos',every:60,mine:false},
   fin:{salary:4000,example:true,items:[['Rent / housing',30],['Savings',20],['Groceries',12],['Car & gas',8],['Utilities & phone',7],['Fun money',10],['Investing',10]].map(([n,p])=>({id:uid(),name:n,pct:p}))}
 }}
 function merge(d,x){if(x===undefined||x===null)return d;if(typeof d!=='object'||Array.isArray(d)||typeof x!=='object'||Array.isArray(x))return x;const o={};for(const k of Object.keys(d))o[k]=merge(d[k],x[k]);for(const k of Object.keys(x))if(!(k in o))o[k]=x[k];return o}
 function ls(){try{return window.localStorage}catch(e){return null}}
-function load(){try{const t=ls()&&ls().getItem(KEY);if(t)return merge(defaults(),JSON.parse(t))}catch(e){}return defaults()}
+/* older saves kept time off in days; convert to hours (8 h per day). Start and monthly amounts were meant as hours. */
+function migrate(x){try{if(x&&typeof x==='object'&&x.units!=='hours'){
+  if(x.pto&&Array.isArray(x.pto.entries))x.pto.entries.forEach(e=>{if(e.hours==null){e.hours=n0(e.days)*8;delete e.days}});
+  if(Array.isArray(x.trips))x.trips.forEach(t=>{if(t.hours==null){t.hours=n0(t.pto)*8;delete t.pto}});
+  x.units='hours'}}catch(e){}return x}
+function load(){try{const t=ls()&&ls().getItem(KEY);if(t)return merge(defaults(),migrate(JSON.parse(t)))}catch(e){}return defaults()}
 let S=load();
 let saveOK=true;
 function writeLocal(){try{const s=ls();if(!s)throw 0;s.setItem(KEY,JSON.stringify(S))}catch(e){if(saveOK){saveOK=false;toast('This browser is blocking saving. Changes last until you close the page.')}}}
@@ -526,7 +536,7 @@ function onSnap(snap){
   const d=snap.data()||{};if(typeof d.data!=='string')return;
   if(d.data===sync.lastSent||d.data===JSON.stringify(S)){sync.lastSent=d.data;if(!sync.timer)setStatus('synced');if(!wasLinked){m.linked=uid;m.dirty=false;setMeta(m)}return}
   if(wasLinked&&m.dirty&&(m.updated||0)>(d.updated||0)){push();return}
-  let next;try{next=merge(defaults(),JSON.parse(d.data))}catch(e){setStatus('error','The synced copy is damaged. Restore a backup to fix it.');return}
+  let next;try{next=merge(defaults(),migrate(JSON.parse(d.data)))}catch(e){setStatus('error','The synced copy is damaged. Restore a backup to fix it.');return}
   if(!wasLinked){try{ls().setItem(KEY+'-before-sync',JSON.stringify(S))}catch(e){}}
   S=next;writeLocal();m.linked=uid;m.dirty=false;m.updated=d.updated||Date.now();setMeta(m);sync.lastSent=d.data;setStatus('synced');
   rerenderSoon();toast(first?(wasLinked?'Loaded your latest planner':'Loaded your synced planner'):'Updated from another device');
@@ -581,16 +591,35 @@ function resetChecks(){if(S.checks.date!==today()){S.checks={date:today(),map:{}
 function accruals(through){const p=S.pto,out=[];if(!p.startDate)return out;const d=parse(p.startDate);let y=d.getFullYear(),m=d.getMonth();
   for(let i=0;i<1200;i++){const e=iso(new Date(y,m,lastDay(y,m)));if(e>through)break;if(e>p.startDate)out.push(e);m++;if(m>11){m=0;y++}}return out}
 function earned(through){return n0(S.pto.start)+n0(S.pto.per)*accruals(through).length}
-function ptoUsed(){return S.trips.filter(x=>n0(x.pto)>0&&x.start).map(x=>({date:x.start,days:n0(x.pto),label:x.name||'Trip',kind:'trip',id:x.id}))
-  .concat(S.pto.entries.map(e=>({date:e.date,days:n0(e.days),label:e.note||'Time off',kind:'entry',id:e.id})))}
-function balanceOn(date){return earned(date)-ptoUsed().filter(u=>u.date<=date).reduce((a,u)=>a+u.days,0)}
+function ptoUsed(){return S.trips.filter(x=>n0(x.hours)>0&&x.start).map(x=>({date:x.start,h:n0(x.hours),label:x.name||'Trip',kind:'trip',id:x.id}))
+  .concat(S.pto.entries.map(e=>({date:e.date,h:n0(e.hours),label:e.note||'Time off',kind:'entry',id:e.id})))}
+function balanceOn(date){return earned(date)-ptoUsed().filter(u=>u.date<=date).reduce((a,u)=>a+u.h,0)}
+/* first monthly top-up on or after `from` that brings the balance back to zero or above */
+function backAboveZero(from){if(balanceOn(from)>=0)return null;for(const d of accruals(addDays(from,365*6)))if(d>=from&&balanceOn(d)>=0)return d;return null}
+const fmtH=h=>{const v=r1(n0(h));return(v<0?'−':'')+Math.abs(v)+' h'};
+const hpd=()=>n0(S.pto.hpd)||8;
+const PLAN={off:'Day off',half:'Half day off',wfh:'Work from home',work:'Working that day'};
+const PLAN_SHORT={half:'half day',wfh:'WFH',work:'working'};
+function planHours(k){return k==='half'?hpd()/2:k==='wfh'||k==='work'?0:hpd()}
+function tripHoursCalc(a,b,plan){if(!a||!b||b<a)return 0;let h=0;for(let d=a;d<=b;d=addDays(d,1)){const w=parse(d).getDay();if(w&&w!==6&&!isHol(d))h+=planHours((plan||{})[d]||'off')}return h}
+function planHTML(a,b,plan){plan=plan||{};if(!a||!b||b<a)return'<p class="muted" style="font-size:13px">Pick your leave and return dates to plan each day.</p>';
+  const days=[];for(let d=a;d<=b&&days.length<62;d=addDays(d,1))days.push(d);
+  return`<div><span class="eyebrow">Day by day</span>
+    <p class="muted" style="font-size:13px;margin-top:4px">Leaving after work or back in time for work? Set that day to “Working that day”. Use “Work from home” for days you're away but working remotely.</p>
+    <div class="plan-list">${days.map(d=>{const w=parse(d).getDay(),hol=holidaysIn(d,d)[0],lab=`${fmt(d,{weekday:'short',month:'short',day:'numeric'})}${d===a?' · leave':d===b?' · return':''}`;
+      if(w===0||w===6||hol)return`<div class="plan-row off"><span>${lab}</span><span>${hol?esc(hol.name.replace(' (observed)','')):'Weekend'}</span></div>`;
+      const cur=plan[d]||'off';
+      return`<div class="plan-row"><label for="pl-${d}">${lab}</label><select id="pl-${d}" name="plan-${d}" data-chg="planDay">${Object.entries(PLAN).map(([k,n])=>`<option value="${k}"${cur===k?' selected':''}>${n}${k==='off'?` (${hpd()} h)`:k==='half'?` (${hpd()/2} h)`:''}</option>`).join('')}</select></div>`}).join('')}</div></div>`}
+function readPlan(){const o={};document.querySelectorAll('#tripPlan select[name^="plan-"]').forEach(el=>{if(el.value!=='off')o[el.name.slice(5)]=el.value});return o}
+function refreshTripPlan(rebuild){const a=$('#tr-start'),b=$('#tr-end'),box=$('#tripPlan');if(!a||!b||!box)return;const cur=readPlan();if(rebuild)box.innerHTML=planHTML(a.value,b.value,cur);
+  const h=$('#tr-hours');if(h&&!h.dataset.touched&&a.value&&b.value&&b.value>=a.value)h.value=tripHoursCalc(a.value,b.value,readPlan())}
 function nextAccrual(from){const d=parse(from);let y=d.getFullYear(),m=d.getMonth();for(let i=0;i<36;i++){const e=iso(new Date(y,m,lastDay(y,m)));if(e>from&&e>S.pto.startDate)return e;m++;if(m>11){m=0;y++}}return from}
 /* personal hours: perYear on Jan 1; the first year starts from the left value */
 function personalLeft(y){const P=S.personal,y0=n0(P.year)||y;if(y<y0)return 0;
   const used=yy=>P.entries.concat(S.appts||[]).filter(e=>e.date&&+e.date.slice(0,4)===yy).reduce((a,e)=>a+n0(e.hours),0);
   if(P.carry){let b=n0(P.left);for(let k=y0;k<=y;k++){if(k>y0)b+=n0(P.perYear);b-=used(k)}return b}
   return (y===y0?n0(P.left):n0(P.perYear))-used(y)}
-function availableBefore(trip){return earned(trip.start)-ptoUsed().filter(u=>u.date<trip.start&&u.id!==trip.id).reduce((a,u)=>a+u.days,0)}
+function availableBefore(trip){return earned(trip.start)-ptoUsed().filter(u=>u.date<trip.start&&u.id!==trip.id).reduce((a,u)=>a+u.h,0)}
 
 /* ---------- calorie logic ---------- */
 function targets(){const t=S.food.targets;const pMid=(n0(t.pMin)+n0(t.pMax))/2,fMid=(n0(t.fMin)+n0(t.fMax))/2;
@@ -638,7 +667,7 @@ function monthName(mo){return parse(mo+'-01').toLocaleDateString(undefined,{mont
 const HKEY='ridgeline-device-hidden-tiles';
 function hiddenTiles(){try{return JSON.parse(ls().getItem(HKEY))||[]}catch(e){return[]}}
 function setHiddenTiles(a){try{ls().setItem(HKEY,JSON.stringify(a))}catch(e){}}
-const TILE_NAMES={workout:'Workout',food:'Calories',tasks:'Work tasks',daysoff:'Time off',finance:'Monthly money',shop:'Shopping list'};
+const TILE_NAMES={workout:'Workout',food:'Calories',tasks:'Work tasks',daysoff:'Time off',finance:'Finance',shop:'Shopping list'};
 function applyNavHidden(){const h=hiddenTiles();document.querySelectorAll('#nav a[data-go]').forEach(a=>{const g=a.dataset.go;
   a.hidden=g==='home'?false:g==='travel'?h.includes('daysoff'):h.includes(g)})}
 function tile(v,c,label,big,sub){if(hiddenTiles().includes(v))return'';return`<a class="tile" href="#${v}" data-act="go" data-go="${v}" style="--c:var(${c})"><div class="tile-head"><span class="blaze"></span><span class="eyebrow">${label}</span><span class="arrow" aria-hidden="true">→</span></div><div class="big">${big}</div><div class="sub">${sub}</div></a>`}
@@ -659,8 +688,8 @@ function renderHome(){
     ${tile('workout','--b-workout','Workout · today',wBig,wSub)}
     ${tile('food','--b-food','Calories · today',`<span class="num">${Math.round(tot.cal).toLocaleString()}</span> <span class="muted" style="font-size:18px">/ ${tg.cal.toLocaleString()}</span>`,`Protein ${Math.round(tot.p)} g of ${tg.pMin}–${tg.pMax} g`)}
     ${tile('tasks','--b-tasks','Work tasks',`${open.length} open`,tSub)}
-    ${tile('daysoff','--b-pto','Time off',`${r1(balanceOn(t))} days off`,`${r1(personalLeft(+t.slice(0,4)))} personal hours left · ${nt?(nt.start<=t?`On ${esc(nt.name)} now`:`Next trip: ${esc(nt.name)}, ${relDay(nt.start)}`):(()=>{const e=upcomingEvents(t,90).find(x=>x.date>=t);return e?`Next: ${esc(e.label)}, ${relDay(e.date)}`:'Nothing planned'})()}`)}
-    ${tile('finance','--b-fin','Monthly money',`${money(ft.sal)}<span class="muted" style="font-size:16px"> /mo</span>`,`${money(ft.left-monthSpent(t.slice(0,7)))} left to spend this month`)}
+    ${tile('daysoff','--b-pto','Time off',`${fmtH(balanceOn(t))} time off`,`${r1(personalLeft(+t.slice(0,4)))} personal hours left · ${nt?(nt.start<=t?`On ${esc(nt.name)} now`:`Next trip: ${esc(nt.name)}, ${relDay(nt.start)}`):(()=>{const e=upcomingEvents(t,90).find(x=>x.date>=t);return e?`Next: ${esc(e.label)}, ${relDay(e.date)}`:'Nothing planned'})()}`)}
+    ${tile('finance','--b-fin','Finance',`${money(ft.sal)}<span class="muted" style="font-size:16px"> /mo</span>`,`${money(ft.left-monthSpent(t.slice(0,7)))} left to spend this month`)}
     ${tile('shop','--b-shop','Shopping list',`${S.shop.length} ${S.shop.length===1?'item':'items'}`,S.shop.length?esc(S.shop.slice(0,3).map(x=>x.name).join(', '))+(S.shop.length>3?', …':''):'Nothing to buy right now')}
   </div>
   ${hiddenTiles().length===Object.keys(TILE_NAMES).length?'<div class="empty">All sections are hidden on this device. Show them again below.</div>':''}
@@ -867,7 +896,7 @@ function renderTasks(){
 /* ---------- TRAVEL + DAYS OFF ---------- */
 function renderTravel(){
   const tab=ui.travelTab;
-  const T=[['cal','Calendar'],['trips','Trips'],['appts','Appointments'],['daysoff','Days off']];
+  const T=[['cal','Calendar'],['trips','Trips'],['appts','Appointments'],['daysoff','Balances']];
   $('#v-travel').innerHTML=`
   <div class="view-head"><h1><span class="blaze" style="--c:var(--b-pto)"></span>Time off</h1>
     <div class="right"><div class="seg">${T.map(([k,n])=>`<button class="${tab===k?'on':''}" data-act="travelTab" data-tab="${k}">${n}</button>`).join('')}</div></div></div>
@@ -877,11 +906,12 @@ function renderTravel(){
 /* ---------- calendar ---------- */
 function calEvents(from,to){const ev=[];
   holidaysIn(from,to).forEach(h=>ev.push({date:h.date,type:'hol',label:h.name}));
-  S.trips.forEach(t=>{if(!t.start)return;const e=t.end&&t.end>=t.start?t.end:t.start,stop=e>to?to:e;for(let d=t.start<from?from:t.start;d<=stop;d=addDays(d,1))ev.push({date:d,type:'trip',label:t.name,cont:d!==t.start,trip:t})});
+  S.trips.forEach(t=>{if(!t.start)return;const e=t.end&&t.end>=t.start?t.end:t.start,stop=e>to?to:e;for(let d=t.start<from?from:t.start;d<=stop;d=addDays(d,1)){const pl=(t.plan||{})[d];
+    ev.push({date:d,type:'trip',label:t.name,short:pl?`${PLAN_SHORT[pl].replace(/^./,c=>c.toUpperCase())} · ${t.name}`:t.name,pl,cont:d!==t.start,trip:t})}});
   (S.appts||[]).forEach(a=>{if(a.date>=from&&a.date<=to)ev.push({date:a.date,type:'appt',label:a.title,short:(a.time?fmtTime(a.time).replace(':00','').replace(/\s/g,'').toLowerCase()+' ':'')+a.title,appt:a})});
-  S.pto.entries.forEach(x=>{if(x.date>=from&&x.date<=to)ev.push({date:x.date,type:'off',label:x.note||'Time off',sub:`Time off · ${plural(n0(x.days),'day')}`})});
+  S.pto.entries.forEach(x=>{if(x.date>=from&&x.date<=to)ev.push({date:x.date,type:'off',label:x.note||'Time off',sub:`Time off · ${fmtH(x.hours)}`})});
   S.personal.entries.forEach(x=>{if(x.date>=from&&x.date<=to)ev.push({date:x.date,type:'off',label:x.note||'Personal time',sub:`Personal hours · ${r1(n0(x.hours))} h`})});
-  accruals(to).forEach(d=>{if(d>=from)ev.push({date:d,type:'acc',label:`+${n0(S.pto.per)} days off`,sub:'Monthly days off added'})});
+  accruals(to).forEach(d=>{if(d>=from)ev.push({date:d,type:'acc',label:`+${n0(S.pto.per)} h time off`,sub:'Monthly time off added'})});
   return ev}
 function upcomingEvents(from,days){const to=addDays(from,days),out=[];
   holidaysIn(from,to).forEach(h=>out.push({date:h.date,type:'hol',label:h.name}));
@@ -889,7 +919,7 @@ function upcomingEvents(from,days){const to=addDays(from,days),out=[];
   (S.appts||[]).forEach(a=>{if(a.date>=from&&a.date<=to)out.push({date:a.date,type:'appt',label:a.title,time:a.time,appt:a})});
   return out.sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:(a.time||'')<(b.time||'')?-1:1)}
 const linkChips=(L,icon)=>(L||[]).length?`<div class="links">${L.map(l=>`<span class="lnk"><a href="${esc(l.url)}" target="_blank" rel="noopener noreferrer" title="${esc(l.url)}">${icon} ${esc(l.label||hostOf(l.url))}</a></span>`).join('')}</div>`:'';
-function evDetail(e){const sub=e.type==='hol'?'Work holiday':e.type==='trip'?['Trip',e.trip.dest?esc(e.trip.dest):'',e.trip.start&&e.trip.end?`${fmt(e.trip.start)} – ${fmt(e.trip.end)}`:''].filter(Boolean).join(' · ')
+function evDetail(e){const sub=e.type==='hol'?'Work holiday':e.type==='trip'?['Trip'+(e.pl?` · ${PLAN[e.pl].toLowerCase()} this day`:''),e.trip.dest?esc(e.trip.dest):'',e.trip.start&&e.trip.end?`${fmt(e.trip.start)} – ${fmt(e.trip.end)}`:''].filter(Boolean).join(' · ')
   :e.type==='appt'?['Appointment',e.appt.time?fmtTime(e.appt.time):'',e.appt.where?esc(e.appt.where):''].filter(Boolean).join(' · '):esc(e.sub||'');
   return`<div class="day-row"><span class="dot ev-${e.type}"></span><div class="day-main"><b>${esc(e.label)}</b><small>${sub}</small>${e.type==='trip'?linkChips(e.trip.links,'✈'):''}${e.type==='appt'&&e.appt.note?`<small>${esc(e.appt.note)}</small>`:''}</div></div>`}
 function calendarHTML(){
@@ -898,14 +928,14 @@ function calendarHTML(){
   const by={},ORD={hol:0,trip:1,appt:2,off:3,acc:4};calEvents(start<sel?start:sel,end>sel?end:sel).forEach(e=>(by[e.date]=by[e.date]||[]).push(e));
   Object.values(by).forEach(L=>L.sort((a,b)=>ORD[a.type]-ORD[b.type]));
   let cells='';for(let d=start;d<=end;d=addDays(d,1)){const L=by[d]||[],w=parse(d).getDay();
-    cells+=`<button type="button" class="cal-day${d.slice(0,7)!==mo?' out':''}${d===t?' today':''}${d===sel?' sel':''}${w===0||w===6?' wknd':''}" data-act="calSel" data-d="${d}" aria-pressed="${d===sel}" aria-label="${fmtW(d)}${L.length?': '+esc(L.map(e=>e.label).join(', ')):''}"><span class="cal-n">${parse(d).getDate()}</span><span class="cal-evs">${L.slice(0,3).map(e=>`<span class="ev ev-${e.type}${e.cont?' cont':''}">${e.cont&&w!==0?'&nbsp;':esc(e.short||e.label)}</span>`).join('')}${L.length>3?`<span class="more">+${L.length-3} more</span>`:''}</span></button>`}
+    cells+=`<button type="button" class="cal-day${d.slice(0,7)!==mo?' out':''}${d===t?' today':''}${d===sel?' sel':''}${w===0||w===6?' wknd':''}" data-act="calSel" data-d="${d}" aria-pressed="${d===sel}" aria-label="${fmtW(d)}${L.length?': '+esc(L.map(e=>e.label).join(', ')):''}"><span class="cal-n">${parse(d).getDate()}</span><span class="cal-evs">${L.slice(0,3).map(e=>`<span class="ev ev-${e.type}${e.cont?' cont':''}">${e.cont&&w!==0&&!e.pl?'&nbsp;':esc(e.short||e.label)}</span>`).join('')}${L.length>3?`<span class="more">+${L.length-3} more</span>`:''}</span></button>`}
   const selL=by[sel]||[],up=upcomingEvents(t,60).slice(0,8),yr=+t.slice(0,4);
   return`<div class="stack" style="gap:18px">
   <div class="panel">
     <div class="panel-head"><h2>${monthName(mo)}</h2><div class="right"><button class="btn ghost sm" data-act="calMove" data-n="-1" aria-label="Previous month">‹</button>${mo!==t.slice(0,7)?'<button class="btn ghost sm" data-act="calMove" data-n="0">Today</button>':''}<button class="btn ghost sm" data-act="calMove" data-n="1" aria-label="Next month">›</button></div></div>
     <div class="cal-head" aria-hidden="true">${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(x=>`<span>${x}</span>`).join('')}</div>
     <div class="cal">${cells}</div>
-    <div class="legend" style="margin-top:12px"><span><i class="ev-trip"></i>Trip</span><span><i class="ev-hol"></i>Work holiday</span><span><i class="ev-appt"></i>Appointment</span><span><i class="ev-off"></i>Time off or personal hours</span><span><i class="ev-acc"></i>Days off added</span></div>
+    <div class="legend" style="margin-top:12px"><span><i class="ev-trip"></i>Trip</span><span><i class="ev-hol"></i>Work holiday</span><span><i class="ev-appt"></i>Appointment</span><span><i class="ev-off"></i>Time off or personal hours</span><span><i class="ev-acc"></i>Time off added</span></div>
   </div>
   <div class="grid2">
     <div class="panel stack"><div class="panel-head" style="margin:0"><h2>${fmtW(sel)}</h2><span class="right muted" style="font-size:13px">${relDay(sel)}</span></div>
@@ -913,7 +943,7 @@ function calendarHTML(){
       <div class="row"><button class="btn sm" data-act="calAddAppt" data-d="${sel}">+ Appointment this day</button><button class="btn ghost sm" data-act="calAddTrip" data-d="${sel}">+ Trip starting this day</button></div></div>
     <div class="panel stack"><div class="panel-head" style="margin:0"><h2>Coming up</h2><span class="right muted" style="font-size:13px">next 60 days</span></div>
       ${up.length?`<div>${up.map(e=>`<div class="up-row"><span class="up-date"><b>${fmt(e.date)}</b><small>${fmt(e.date,{weekday:'short'})}</small></span><span class="dot ev-${e.type}"></span><span class="up-main"><b>${esc(e.label)}</b><small>${e.type==='hol'?'Work holiday':e.type==='trip'?(e.trip.start<t?'Trip underway':'Trip')+(e.trip.dest?' · '+esc(e.trip.dest):''):'Appointment'+(e.time?' · '+fmtTime(e.time):'')+(e.appt.where?' · '+esc(e.appt.where):'')} · ${relDay(e.date)}</small></span></div>`).join('')}</div>`:'<p class="muted">Nothing in the next 60 days.</p>'}
-      <div class="row" style="gap:18px;padding-top:10px;border-top:1px solid var(--line);align-items:center"><span><b class="num">${r1(balanceOn(t))}</b> <span class="muted">days off</span></span><span><b class="num">${r1(personalLeft(yr))}</b> <span class="muted">personal hours</span></span><span style="flex:1"></span><button class="btn ghost sm" data-act="travelTab" data-tab="daysoff">See balances</button></div></div>
+      <div class="row" style="gap:18px;padding-top:10px;border-top:1px solid var(--line);align-items:center"><span><b class="num">${fmtH(balanceOn(t))}</b> <span class="muted">time off</span></span><span><b class="num">${r1(personalLeft(yr))}</b> <span class="muted">personal hours</span></span><span style="flex:1"></span><button class="btn ghost sm" data-act="travelTab" data-tab="daysoff">See balances</button></div></div>
   </div></div>`}
 
 /* ---------- appointments ---------- */
@@ -943,12 +973,14 @@ function tripsHTML(){
   const up=sorted.filter(x=>!x.end||x.end>=t),past=sorted.filter(x=>x.end&&x.end<t).reverse();
   const card=x=>{const st=!x.start?'':x.end<t?'<span class="chip">Past</span>':x.start<=t?'<span class="chip good">Underway</span>':`<span class="chip">${relDay(x.start).replace(/^./,c=>c.toUpperCase())}</span>`;
     const nights=x.start&&x.end?diffDays(x.start,x.end):0;
-    let proj='';if(x.start>t&&n0(x.pto)>0){const a=availableBefore(x);proj=a>=n0(x.pto)?`<span class="chip good">${r1(a)} days off available by then</span>`:`<span class="chip bad">Short ${r1(n0(x.pto)-a)} days off</span>`}
+    let proj='';if(x.start&&(x.end||x.start)>=t&&n0(x.hours)>0){const after=balanceOn(x.start),back=backAboveZero(x.start);
+      proj=after>=0?`<span class="chip good">${fmtH(after)} left after this trip</span>`:`<span class="chip warn">Balance ${fmtH(after)} after this trip${back?` · back to 0 on ${fmt(back)}`:''}</span>`}
+    const special=Object.entries(x.plan||{}).filter(([d,k])=>d>=x.start&&d<=x.end&&PLAN_SHORT[k]).sort().map(([d,k])=>`<span class="chip">${fmt(d,{weekday:'short',month:'short',day:'numeric'})}: ${PLAN_SHORT[k]}</span>`).join('');
     const doneN=x.items.filter(i=>i.done).length;
     return`<div class="panel trip"><div class="trip-head"><div style="min-width:0"><h3>${esc(x.name)}</h3><div class="muted">${esc(x.dest)}</div></div>
       <div class="right"><button class="btn ghost sm" data-act="editTrip" data-id="${x.id}">Edit</button>
       <button class="btn ${ui.confirmTrip===x.id?'danger':'ghost'} sm" data-act="delTrip" data-id="${x.id}">${ui.confirmTrip===x.id?'Confirm delete':'Delete'}</button></div></div>
-      <div class="chips">${st}<span class="chip">${x.start?fmtW(x.start):'No dates'}${x.end&&x.end!==x.start?' – '+fmtW(x.end):''}</span>${nights?`<span class="chip">${plural(nights,'night')}</span>`:''}<span class="chip">${plural(n0(x.pto),'day')} off used</span>${proj}</div>
+      <div class="chips">${st}<span class="chip">${x.start?fmtW(x.start):'No dates'}${x.end&&x.end!==x.start?' – '+fmtW(x.end):''}</span>${nights?`<span class="chip">${plural(nights,'night')}</span>`:''}<span class="chip">${fmtH(x.hours)} time off</span>${special}${proj}</div>
       ${x.notes?`<p style="white-space:pre-wrap">${esc(x.notes)}</p>`:''}
       <div><span class="eyebrow">Flight and booking links</span>
         ${(x.links||[]).length?`<div class="links" style="margin-top:6px">${x.links.map(l=>`<span class="lnk"><a href="${esc(l.url)}" target="_blank" rel="noopener noreferrer" title="${esc(l.url)}">✈ ${esc(l.label||hostOf(l.url))}</a><button class="x" data-act="delTripLink" data-trip="${x.id}" data-lid="${l.id}" aria-label="Remove link">×</button></span>`).join('')}</div>`:''}
@@ -963,10 +995,11 @@ function tripsHTML(){
         <label class="f wide">Destination<input id="tr-dest" name="dest" value="${esc(v.dest)}" placeholder="City, park or region"></label></div>
       <div class="row"><label class="f">Leave<input id="tr-start" name="start" type="date" required value="${v.start||''}" data-inp="tripDates"></label>
         <label class="f">Return<input id="tr-end" name="end" type="date" required value="${v.end||''}" data-inp="tripDates"></label>
-        <label class="f">Days off used<input id="tr-pto" name="pto" type="number" min="0" step="0.5" value="${ed?n0(v.pto):''}" data-inp="ptoTouched"></label></div>
+        <label class="f">Hours of time off<input id="tr-hours" name="hours" type="number" min="0" step="0.5" value="${ed?n0(v.hours):''}" data-inp="ptoTouched"${ed&&n0(v.hours)!==tripHoursCalc(v.start,v.end,v.plan)?' data-touched="1"':''}></label></div>
+      <div id="tripPlan">${planHTML(v.start,v.end,v.plan)}</div>
       <label class="f">${ed?'Add another flight info link (optional)':'Flight info link (optional)'}<input id="tr-flight" name="flight" inputmode="url" autocomplete="off" placeholder="Paste the link to your flight details"></label>
       <label class="f">Notes<textarea id="tr-notes" name="notes" placeholder="Lodging, confirmation numbers, ideas">${esc(v.notes)}</textarea></label>
-      <div class="row" style="align-items:center"><span class="muted" style="font-size:13px;flex:1 1 200px">Days off fills in with the workdays between your dates (weekdays that aren't work holidays). Change it if you need to.</span>
+      <div class="row" style="align-items:center"><span class="muted" style="font-size:13px;flex:1 1 200px">Hours of time off fills in from your day-by-day plan (${hpd()} h per workday; weekends and work holidays are free). Change it if you need to. Your balance may go below zero.</span>
         ${ed?'<button type="button" class="btn ghost" data-act="cancelEdit">Cancel</button>':''}<button class="btn">${ed?'Save changes':'Add trip'}</button></div>
     </form></div>
   ${up.length?up.map(card).join(''):'<div class="empty">No upcoming trips. Plan one above.</div>'}
@@ -975,17 +1008,17 @@ function tripsHTML(){
 }
 function daysOffHTML(){
   const t=today(),p=S.pto,bal=balanceOn(t),nx=nextAccrual(t);
-  const used=ptoUsed(),booked=used.filter(u=>u.date>t).reduce((a,u)=>a+u.days,0);
+  const used=ptoUsed(),booked=used.filter(u=>u.date>t).reduce((a,u)=>a+u.h,0),back=backAboveZero(t);
   const fut=[];let c=t;for(let i=0;i<3;i++){c=nextAccrual(c);fut.push(c)}
   const horizon=[fut[2]].concat(used.map(u=>u.date)).sort().pop();
   const ev=[{date:p.startDate,label:'Starting balance',delta:n0(p.start),o:0}]
-    .concat(accruals(horizon).map(d=>({date:d,label:'Monthly days off added',delta:n0(p.per),o:1})))
-    .concat(used.map(u=>({date:u.date,label:u.label,delta:-u.days,o:2,kind:u.kind,id:u.id})))
+    .concat(accruals(horizon).map(d=>({date:d,label:'Monthly time off added',delta:n0(p.per),o:1})))
+    .concat(used.map(u=>({date:u.date,label:u.label,delta:-u.h,o:2,kind:u.kind,id:u.id})))
     .sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:a.o-b.o);
   let run=0;const rows=ev.map(e=>{run+=e.delta;const f=e.date>t;
-    if(e.kind==='entry'&&isEd('pto',e.id)){const x=S.pto.entries.find(y=>y.id===e.id);if(x)return`<tr><td colspan="5">${entryForm('pto',x,'days','Days','0.5')}</td></tr>`}
+    if(e.kind==='entry'&&isEd('pto',e.id)){const x=S.pto.entries.find(y=>y.id===e.id);if(x)return`<tr><td colspan="5">${entryForm('pto',x,'hours','Hours','0.5')}</td></tr>`}
     return`<tr class="${f?'future':''}"><td>${fmtY(e.date)}${f?' <span class="chip" style="font-size:11px">upcoming</span>':''}</td><td style="min-width:140px">${esc(e.label)}${e.kind==='trip'?' <span class="muted">(trip)</span>':''}</td>
-      <td class="r ${e.delta>=0?'plus':'minus'}">${e.delta>=0?'+':'−'}${r1(Math.abs(e.delta))}</td><td class="r"><b>${r1(run)}</b></td>
+      <td class="r ${e.delta>=0?'plus':'minus'}">${e.delta>=0?'+':'−'}${r1(Math.abs(e.delta))} h</td><td class="r${run<0?' minus':''}"><b>${fmtH(run)}</b></td>
       <td class="r" style="white-space:nowrap">${e.kind==='entry'?`${edBtn('pto',e.id,'time off')}<button class="x" data-act="delPto" data-id="${e.id}" aria-label="Remove">×</button>`:e.kind==='trip'?`<button class="btn ghost sm" data-act="editTripFrom" data-id="${e.id}">Edit trip</button>`:''}</td></tr>`}).join('');
   const P=S.personal,yr=+t.slice(0,4),pl=personalLeft(yr),pUsed=P.entries.concat((S.appts||[]).filter(a=>n0(a.hours)>0).map(a=>({id:a.id,date:a.date,hours:a.hours,note:a.title,appt:true}))).filter(e=>e.date&&+e.date.slice(0,4)===yr).sort((a,b)=>a.date<b.date?1:-1);
   const pCap=P.carry?Math.max(pl,n0(P.perYear)):(yr===n0(P.year)?Math.max(n0(P.left),n0(P.perYear)):n0(P.perYear));
@@ -993,13 +1026,13 @@ function daysOffHTML(){
   <div class="grid2">
   <div class="panel" style="--c:var(--b-pto)">
     <div class="balance">
-      <div><span class="eyebrow">Available today</span><div class="bignum num">${r1(bal)}</div><span class="muted">days off</span></div>
+      <div><span class="eyebrow">Time off today</span><div class="bignum num"${bal<0?' style="color:var(--bad)"':''}>${r1(bal)}</div><span class="muted">hours${bal<0&&back?` · back to 0 on ${fmt(back)}`:''}</span></div>
       <div class="stack" style="gap:8px;padding-bottom:6px">
-        <div><span class="eyebrow">Next added</span><div><b>+${n0(p.per)}</b> on ${fmtW(nx)} <span class="muted">(${relDay(nx)})</span></div></div>
-        <div><span class="eyebrow">Already planned</span><div><b>${r1(booked)}</b> days on future trips and time off</div></div>
+        <div><span class="eyebrow">Next added</span><div><b>+${n0(p.per)} h</b> on ${fmtW(nx)} <span class="muted">(${relDay(nx)})</span></div></div>
+        <div><span class="eyebrow">Already planned</span><div><b>${fmtH(booked)}</b> on future trips and time off</div></div>
       </div>
     </div>
-    <p class="note" style="margin-top:14px">You get ${n0(p.per)} more days off on the last day of every month (the 30th or 31st, and Feb 28 or 29). Trips and time off come out of the balance on their start date.</p>
+    <p class="note" style="margin-top:14px">You get ${n0(p.per)} more hours on the last day of every month (the 30th or 31st, and Feb 28 or 29). Trips and time off come out of the balance on their start date. If a trip needs more than you have, the balance goes below zero and climbs back as monthly hours are added.</p>
   </div>
   <div class="panel stack">
     <div class="balance">
@@ -1023,32 +1056,33 @@ function daysOffHTML(){
     <div class="panel stack"><h2>Add time off</h2>
       <form class="row" data-form="pto">
         <label class="f">Date<input id="po-date" name="date" type="date" value="${t}" required></label>
-        <label class="f tiny">Days<input id="po-days" name="days" type="number" min="0.5" step="0.5" value="1" required></label>
+        <label class="f tiny">Hours<input id="po-hours" name="hours" type="number" min="0.5" step="0.5" value="${hpd()}" required></label>
         <label class="f wide">Note<input id="po-note" name="note" placeholder="e.g. Sick day, long weekend"></label>
         <button class="btn">Add</button></form>
-      <p class="muted" style="font-size:13px">For days off that are not part of a trip. Trips you add count automatically.</p></div>
+      <p class="muted" style="font-size:13px">For time off that isn't part of a trip. Trips you add count automatically.</p></div>
   </div>
   <div class="panel"><h2>Work holidays</h2>
-    <p class="muted" style="font-size:13px;margin-top:6px">These show on your calendar every year. When one falls on a weekend it moves to the Friday before or the Monday after. Holidays don't use days off and aren't counted in a trip's days off. Untick any your job doesn't give.</p>
+    <p class="muted" style="font-size:13px;margin-top:6px">These show on your calendar every year. When one falls on a weekend it moves to the Friday before or the Monday after. Holidays don't use time off and aren't counted in a trip's hours. Untick any your job doesn't give.</p>
     <div class="tbl-wrap" style="margin-top:8px"><table><thead><tr><th></th><th>Holiday</th><th>${yr}</th><th>${yr+1}</th></tr></thead><tbody>${HOLIDAYS.map(h=>{const on=!(S.holidaysOff||[]).includes(h.k),cell=y=>{const r=h.f(y);return`${fmt(r.date,Object.assign({weekday:'short',month:'short',day:'numeric'},+r.date.slice(0,4)!==y?{year:'numeric'}:{}))}${r.obs?' <span class="muted">(observed)</span>':''}`};
       return`<tr class="${on?'':'future'}"><td style="width:34px"><input type="checkbox" id="hol-${h.k}" data-chg="hol" data-k="${h.k}" ${on?'checked':''}></td><td><label for="hol-${h.k}">${h.n}</label></td><td style="white-space:nowrap">${cell(yr)}</td><td style="white-space:nowrap">${cell(yr+1)}</td></tr>`}).join('')}</tbody></table></div></div>
-  <div class="panel"><h2>Days off history</h2><div class="tbl-wrap" style="margin-top:8px"><table>
+  <div class="panel"><h2>Time off history</h2><div class="tbl-wrap" style="margin-top:8px"><table>
     <thead><tr><th>Date</th><th>What</th><th class="r">Change</th><th class="r">Balance</th><th></th></tr></thead><tbody>${rows}</tbody></table></div></div>
   <details class="panel"><summary style="cursor:pointer;font-weight:600">Balance settings</summary>
     <div class="row" style="margin-top:12px">
-      <label class="f">Starting balance<input id="ps-start" type="number" step="0.5" data-chg="ptoSet" data-k="start" value="${n0(p.start)}"></label>
+      <label class="f">Starting balance (hours)<input id="ps-start" type="number" step="0.5" data-chg="ptoSet" data-k="start" value="${n0(p.start)}"></label>
       <label class="f">As of date<input id="ps-date" type="date" data-chg="ptoSet" data-k="startDate" value="${p.startDate}"></label>
-      <label class="f">Added each month<input id="ps-per" type="number" step="0.5" data-chg="ptoSet" data-k="per" value="${n0(p.per)}"></label></div>
+      <label class="f">Added each month (hours)<input id="ps-per" type="number" step="0.5" data-chg="ptoSet" data-k="per" value="${n0(p.per)}"></label>
+      <label class="f">Hours in a workday<input id="ps-hpd" type="number" min="1" step="0.5" data-chg="ptoSet" data-k="hpd" value="${hpd()}"></label></div>
     <div class="row" style="margin-top:12px">
       <label class="f">Personal hours per year<input id="pp-per" type="number" step="0.5" data-chg="personalSet" data-k="perYear" value="${n0(P.perYear)}"></label>
       <label class="f">Hours left in starting year<input id="pp-left" type="number" step="0.25" data-chg="personalSet" data-k="left" value="${n0(P.left)}"></label>
       <label class="f">Starting year<input id="pp-year" type="number" step="1" data-chg="personalSet" data-k="year" value="${n0(P.year)}"></label></div>
     <label style="display:flex;gap:8px;align-items:center;font-size:14px;margin-top:10px"><input type="checkbox" id="pp-carry" data-chg="personalSet" data-k="carry" ${P.carry?'checked':''}> Unused personal hours carry over to next year</label>
-    <p class="muted" style="font-size:13px;margin-top:8px">Days off start at 10 on Oct 19, 2026. Personal hours start at 8 left in 2026, then ${n0(P.perYear)} each year. Change these if your balance gets corrected at work.</p></details>
+    <p class="muted" style="font-size:13px;margin-top:8px">Time off starts at 10 hours on Oct 19, 2026 and grows by ${n0(p.per)} hours a month. Personal hours start at 8 left in 2026, then ${n0(P.perYear)} each year. Change these if your balance gets corrected at work.</p></details>
   </div>`;
 }
 function updateProj(){const el=$('#proj-date'),out=$('#projOut');if(!el||!out)return;const d=el.value;if(!d){out.textContent='';return}
-  const b=balanceOn(d);out.innerHTML=`On <b>${fmtY(d)}</b> you will have <b class="num" style="font-size:20px;color:var(--b-pto)">${r1(b)}</b> days off, counting everything planned before then.`}
+  const b=balanceOn(d);out.innerHTML=`On <b>${fmtY(d)}</b> you will have <b class="num" style="font-size:20px;color:var(--${b<0?'bad':'b-pto'})">${fmtH(b)}</b> of time off, counting everything planned before then.`}
 
 /* ---------- FINANCE ---------- */
 function renderFinance(){
@@ -1194,7 +1228,7 @@ const ACT={
   calMove:a=>{const n=+a.dataset.n;if(n===0){ui.calMonth=null;ui.calSel=null}else ui.calMonth=shiftMonth(ui.calMonth||today().slice(0,7),n);renderTravel()},
   calSel:a=>{ui.calSel=a.dataset.d;ui.calMonth=a.dataset.d.slice(0,7);renderTravel()},
   calAddAppt:a=>{ui.apptDate=a.dataset.d;ui.travelTab='appts';ui.edit=null;renderTravel();const el=$('#ap-title');if(el)el.focus()},
-  calAddTrip:a=>{ui.travelTab='trips';ui.editTrip=null;renderTravel();const s=$('#tr-start');if(s){s.value=a.dataset.d}const n=$('#tr-name');if(n)n.focus()},
+  calAddTrip:a=>{ui.travelTab='trips';ui.editTrip=null;renderTravel();const s=$('#tr-start');if(s){s.value=a.dataset.d;refreshTripPlan(true)}const n=$('#tr-name');if(n)n.focus()},
   apptEditFrom:a=>{ui.travelTab='appts';ui.edit='appt:'+a.dataset.id;renderTravel();const el=$('#e-title');if(el)el.focus()},
   delAppt:a=>{S.appts=S.appts.filter(x=>x.id!==a.dataset.id);save();renderTravel();toast('Appointment deleted')},
   delTripLink:a=>{const tr=S.trips.find(x=>x.id===a.dataset.trip);if(!tr)return;tr.links=(tr.links||[]).filter(l=>l.id!==a.dataset.lid);save();renderTravel()},
@@ -1211,7 +1245,7 @@ const ACT={
     try{navigator.clipboard.writeText(ta.value).then(done,()=>{ta.select();toast('Press Ctrl+C or ⌘C to copy the selected backup')})}catch(e){ta.select();toast('Press Ctrl+C or ⌘C to copy the selected backup')}},
   downloadExport:()=>{const txt=JSON.stringify(S,null,1);$('#io').value=txt;try{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([txt],{type:'application/json'}));a.download=`ridgeline-backup-${today()}.json`;document.body.appendChild(a);a.click();a.remove();toast('Backup file saved (if your browser allows downloads here)')}catch(e){toast('Saving files is blocked here. Use Copy backup instead.')}},
   importAsk:()=>{try{JSON.parse($('#io').value);$('#importConfirm').hidden=false}catch(e){toast('That text is not a valid backup. Paste the full backup and try again.')}},
-  importConfirm:()=>{try{S=merge(defaults(),JSON.parse($('#io').value));save();$('#importConfirm').hidden=true;ui.rt=null;render();toast('Backup restored')}catch(e){toast('Restore failed: the backup text is damaged.')}},
+  importConfirm:()=>{try{S=merge(defaults(),migrate(JSON.parse($('#io').value)));save();$('#importConfirm').hidden=true;ui.rt=null;render();toast('Backup restored')}catch(e){toast('Restore failed: the backup text is damaged.')}},
   syncIn:()=>signIn(),
   syncOut:()=>{if(window.firebase){if(sync.timer)push();firebase.auth().signOut().then(()=>toast('Signed out. Your planner stays on this device.'))}},
   syncNow:()=>{if(sync.ref)push()},
@@ -1226,6 +1260,7 @@ document.addEventListener('click',e=>{const a=e.target.closest('[data-act]');if(
 document.addEventListener('change',e=>{const el=e.target,k=el.dataset&&el.dataset.chg;if(!k)return;
   if(k==='weight'){S.weights[el.dataset.k]=el.value;save();const it=[].concat(S.routines.A||[],S.routines.B||[]).find(x=>x.k===el.dataset.k);toast(`${it?it.name:'Weight'}: ${wLabel(el.value)}`)}
   else if(k==='tileShow'){let h=hiddenTiles().filter(x=>x!==el.dataset.k);if(!el.checked)h.push(el.dataset.k);setHiddenTiles(h);ui.homeEdit=true;applyNavHidden();renderHome()}
+  else if(k==='planDay'){refreshTripPlan(false)}
   else if(k==='hol'){const off=(S.holidaysOff||[]).filter(x=>x!==el.dataset.k);if(!el.checked)off.push(el.dataset.k);S.holidaysOff=off;save();renderTravel()}
   else if(k==='shopCheck'){ui.buying=el.dataset.id;ui.edit=null;renderShop();const b=$('#buy-amt');if(b)b.focus()}
   else if(k==='foodDate'){if(el.value){ui.foodDate=el.value;renderFood()}}
@@ -1238,7 +1273,7 @@ document.addEventListener('change',e=>{const el=e.target,k=el.dataset&&el.datase
   else if(k==='ptoSet'){const kk=el.dataset.k;S.pto[kk]=kk==='startDate'?(el.value||S.pto.startDate):n0(el.value);save();renderTravel();updateProj()}
 });
 document.addEventListener('input',e=>{const el=e.target,k=el.dataset&&el.dataset.inp;if(!k)return;
-  if(k==='tripDates'){const pto=$('#tr-pto'),s=$('#tr-start').value,en=$('#tr-end').value;if(pto&&!pto.dataset.touched&&s&&en)pto.value=weekdays(s,en)}
+  if(k==='tripDates'){refreshTripPlan(true)}
   else if(k==='ptoTouched'){el.dataset.touched='1'}
   else if(k==='proj'){updateProj()}
   else if(k==='salary'){S.fin.salary=n0(el.value);S.fin.example=false;save();updateFin()}
@@ -1258,7 +1293,8 @@ document.addEventListener('submit',e=>{const fm=e.target,k=fm.dataset&&fm.datase
   else if(k==='personal'){S.personal.entries.push({id:uid(),date:v.date,hours:n0(v.hours),note:(v.note||'').trim()});save();renderTravel();updateProj();toast('Personal hours logged')}
   else if(k==='trip'){if(v.end<v.start){toast('The return date is before the leave date. Fix the dates and try again.');return}
     let fl=null;if((v.flight||'').trim()){const u=normUrl(v.flight);if(!u){toast('The flight link is not a web address. Check it, or leave it empty.');return}fl={id:uid(),url:u,label:'Flight info'}}
-    const data={name:v.name.trim(),dest:v.dest.trim(),start:v.start,end:v.end,pto:v.pto===''?weekdays(v.start,v.end):n0(v.pto),notes:v.notes};
+    const plan={};Object.keys(v).forEach(key=>{if(key.indexOf('plan-')===0){const d=key.slice(5);if(v[key]!=='off'&&d>=v.start&&d<=v.end)plan[d]=v[key]}});
+    const data={name:v.name.trim(),dest:v.dest.trim(),start:v.start,end:v.end,plan,hours:v.hours===''?tripHoursCalc(v.start,v.end,plan):n0(v.hours),notes:v.notes};
     if(ui.editTrip){const x=S.trips.find(t=>t.id===ui.editTrip);if(x){Object.assign(x,data);if(fl)(x.links=x.links||[]).push(fl)}ui.editTrip=null;toast('Trip saved')}
     else{S.trips.push({id:uid(),items:[],links:fl?[fl]:[],...data});toast('Trip added to your calendar')}save();renderTravel()}
   else if(k==='tripLink'){const tr=S.trips.find(x=>x.id===fm.dataset.trip),u=normUrl(v.url);if(!tr)return;if(!u){toast('That link is not a web address. Check it and try again.');return}
@@ -1276,13 +1312,13 @@ document.addEventListener('submit',e=>{const fm=e.target,k=fm.dataset&&fm.datase
     else if(kind==='weigh'){x=find(S.food.weighins);if(x)Object.assign(x,{date:v.date||x.date,lb:n0(v.lb)})}
     else if(kind==='ex'){x=find(S.routines[ui.rt]);if(x)Object.assign(x,{name:txt('name',x.name),alt:(v.alt||'').trim(),sets:Math.max(1,Math.min(10,Math.round(n0(v.sets))||1)),reps:txt('reps',x.reps),start:(v.start||'').trim()})}
     else if(kind==='item'){const tr=S.trips.find(t=>t.id===fm.dataset.trip);x=tr&&find(tr.items);if(x)x.text=txt('text',x.text)}
-    else if(kind==='pto'){x=find(S.pto.entries);if(x)Object.assign(x,{date:v.date||x.date,days:n0(v.qty),note:(v.note||'').trim()})}
+    else if(kind==='pto'){x=find(S.pto.entries);if(x)Object.assign(x,{date:v.date||x.date,hours:n0(v.qty),note:(v.note||'').trim()})}
     else if(kind==='pers'){x=find(S.personal.entries);if(x)Object.assign(x,{date:v.date||x.date,hours:n0(v.qty),note:(v.note||'').trim()})}
     else if(kind==='spend'){x=find(S.spend);if(x)Object.assign(x,{name:txt('name',x.name),amount:Math.round(n0(v.amount)*100)/100,date:v.date||x.date})}
     else if(kind==='appt'){x=find(S.appts);if(x)Object.assign(x,{title:txt('title',x.title),where:(v.where||'').trim(),date:v.date||x.date,time:v.time||'',hours:n0(v.hours),note:(v.note||'').trim()})}
     else if(kind==='shop'){x=find(S.shop);if(x)Object.assign(x,{name:txt('name',x.name),note:(v.note||'').trim()})}
     ui.edit=null;if(x){save();toast('Saved')}render()}
-  else if(k==='pto'){S.pto.entries.push({id:uid(),date:v.date,days:n0(v.days),note:(v.note||'').trim()});save();renderTravel();updateProj();toast('Time off added')}
+  else if(k==='pto'){S.pto.entries.push({id:uid(),date:v.date,hours:n0(v.hours),note:(v.note||'').trim()});save();renderTravel();updateProj();toast('Time off added')}
 });
 
 /* ---------- landscape banner ---------- */

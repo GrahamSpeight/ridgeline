@@ -229,6 +229,31 @@ body.dragging-active,body.dragging-active *{user-select:none;cursor:grabbing!imp
 .edit-form{background:var(--surface-2);border-radius:10px;padding:12px;margin:6px 0}
 .edit-form label.f{color:var(--muted)}
 .ex-name .x.ed{vertical-align:middle;margin-left:2px}
+.cal-head,.cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
+.cal-head span{font-family:var(--font-mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);text-align:center;padding:4px 0}
+.cal-day{font:inherit;color:inherit;text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:8px;min-height:94px;padding:5px;display:flex;flex-direction:column;gap:3px;cursor:pointer;min-width:0;overflow:hidden}
+.cal-day:hover{border-color:var(--b-pto)}
+.cal-day.wknd{background:var(--surface-2)}
+.cal-day.out{opacity:.45}
+.cal-day.sel{outline:2px solid var(--b-pto);outline-offset:-2px}
+.cal-n{font-weight:700;font-size:13px;align-self:flex-start;font-variant-numeric:tabular-nums;padding:0 4px;border-radius:999px}
+.cal-day.today .cal-n{background:var(--b-pto);color:var(--on-accent)}
+.cal-evs{display:flex;flex-direction:column;gap:2px;min-width:0}
+.ev{display:block;font-size:11.5px;font-weight:600;line-height:1.35;padding:1px 5px;border-radius:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink);background:color-mix(in srgb,var(--c) 30%,transparent);border-left:3px solid var(--c)}
+.ev.cont{border-left-color:transparent;border-radius:0 4px 4px 0}
+.ev-trip{--c:var(--b-travel)} .ev-hol{--c:var(--b-food)} .ev-appt{--c:var(--b-tasks)} .ev-off{--c:var(--b-pto)} .ev-acc{--c:var(--muted)}
+.more{font-size:11px;color:var(--muted);padding-left:4px}
+.legend i[class^="ev-"]{background:var(--c)}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--c);flex:none;margin-top:6px}
+.day-row,.up-row{display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-top:1px solid var(--line)}
+.day-row:first-child,.up-row:first-child{border-top:0}
+.day-main,.up-main{display:flex;flex-direction:column;gap:3px;min-width:0;flex:1}
+.day-main small,.up-main small{font-size:12.5px;color:var(--muted)}
+.up-date{display:flex;flex-direction:column;align-items:center;min-width:46px;line-height:1.2;font-variant-numeric:tabular-nums;flex:none}
+.up-date small{color:var(--muted);font-size:11.5px}
+.seg{max-width:100%;overflow-x:auto;scrollbar-width:none}
+@media (max-width:640px){.cal{gap:3px}.cal-head{gap:3px}.cal-day{min-height:56px;padding:3px}.cal-evs{flex-direction:row;flex-wrap:wrap;gap:3px}
+  .ev,.ev.cont{font-size:0;width:8px;height:8px;padding:0;border:0;border-radius:50%;background:var(--c)}.more{display:none}}
 .thumbs{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px}
 .thumb{position:relative;aspect-ratio:3/2;border-radius:8px;overflow:hidden;background:var(--surface-2);max-width:100%}
 .thumb img{width:100%;height:100%;object-fit:cover;display:block}
@@ -291,7 +316,7 @@ footer summary{cursor:pointer;color:var(--muted);font-weight:600}
         <a href="#workout" data-act="go" data-go="workout"><span class="blaze" style="--c:var(--b-workout)"></span>Workout</a>
         <a href="#food" data-act="go" data-go="food"><span class="blaze" style="--c:var(--b-food)"></span>Calories</a>
         <a href="#tasks" data-act="go" data-go="tasks"><span class="blaze" style="--c:var(--b-tasks)"></span>Tasks</a>
-        <a href="#travel" data-act="go" data-go="travel"><span class="blaze" style="--c:var(--b-travel)"></span>Travel</a>
+        <a href="#travel" data-act="go" data-go="travel"><span class="blaze" style="--c:var(--b-pto)"></span>Time off</a>
         <a href="#finance" data-act="go" data-go="finance"><span class="blaze" style="--c:var(--b-fin)"></span>Finance</a>
         <a href="#shop" data-act="go" data-go="shop"><span class="blaze" style="--c:var(--b-shop)"></span>Shopping</a>
       </nav>
@@ -388,7 +413,28 @@ const money2=v=>(isFinite(+v)?+v:0).toLocaleString(undefined,{style:'currency',c
 const money=v=>(isFinite(v)?v:0).toLocaleString(undefined,{style:'currency',currency:'USD',maximumFractionDigits:0});
 const uid=()=>Math.random().toString(36).slice(2,8)+Date.now().toString(36).slice(-4);
 const plural=(n,w)=>`${n} ${w}${Math.abs(n)===1?'':'s'}`;
-function weekdays(a,b){if(!a||!b||b<a)return 0;let n=0;for(let d=parse(a);iso(d)<=b;d.setDate(d.getDate()+1)){const w=d.getDay();if(w&&w!==6)n++}return n}
+function weekdays(a,b){if(!a||!b||b<a)return 0;let n=0;for(let d=parse(a);iso(d)<=b;d.setDate(d.getDate()+1)){const w=d.getDay();if(w&&w!==6&&!isHol(iso(d)))n++}return n}
+/* ---------- work holidays (moved to Fri/Mon when on a weekend) ---------- */
+function hObs(y,m,d){const dt=new Date(y,m,d),w=dt.getDay();if(w===6)dt.setDate(d-1);else if(w===0)dt.setDate(d+1);const r=iso(dt);return{date:r,obs:r!==iso(new Date(y,m,d))}}
+function hNth(y,m,dow,n){const off=(dow-new Date(y,m,1).getDay()+7)%7;return{date:iso(new Date(y,m,1+off+7*(n-1))),obs:false}}
+function hLast(y,m,dow){const L=new Date(y,m+1,0),off=(L.getDay()-dow+7)%7;return{date:iso(new Date(y,m,L.getDate()-off)),obs:false}}
+function prevBiz(s){let d=addDays(s,-1);while([0,6].includes(parse(d).getDay()))d=addDays(d,-1);return d}
+const HOLIDAYS=[
+  {k:'newyear',n:"New Year's Day",f:y=>hObs(y,0,1)},
+  {k:'presidents',n:"Presidents' Day",f:y=>hNth(y,1,1,3)},
+  {k:'patriots',n:"Patriots' Day",f:y=>hNth(y,3,1,3)},
+  {k:'memorial',n:'Memorial Day',f:y=>hLast(y,4,1)},
+  {k:'independence',n:'Independence Day',f:y=>hObs(y,6,4)},
+  {k:'labor',n:'Labor Day',f:y=>hNth(y,8,1,1)},
+  {k:'thanks',n:'Thanksgiving Day',f:y=>hNth(y,10,4,4)},
+  {k:'thanksfri',n:'Day after Thanksgiving',f:y=>({date:addDays(hNth(y,10,4,4).date,1),obs:false})},
+  {k:'xmaseve',n:'Christmas Eve',f:y=>{const d=prevBiz(hObs(y,11,25).date);return{date:d,obs:d!==y+'-12-24'}}},
+  {k:'xmas',n:'Christmas Day',f:y=>hObs(y,11,25)}];
+function holidaysIn(from,to){const off=(typeof S!=='undefined'&&S&&S.holidaysOff)||[],out=[];
+  for(let y=+from.slice(0,4)-1;y<=+to.slice(0,4)+1;y++)HOLIDAYS.forEach(h=>{if(off.includes(h.k))return;const r=h.f(y);if(r.date>=from&&r.date<=to)out.push({date:r.date,k:h.k,name:h.n+(r.obs?' (observed)':'')})});
+  return out.sort((a,b)=>a.date<b.date?-1:1)}
+function isHol(d){return holidaysIn(d,d).length>0}
+function fmtTime(t){if(!t)return'';const[h,m]=t.split(':').map(Number);return new Date(2000,0,1,h,m).toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'})}
 function normUrl(u){u=(u||'').trim();if(!u)return'';if(!/^[a-z][a-z0-9+.-]*:/i.test(u))u='https://'+u;try{const x=new URL(u);return /^https?:$/.test(x.protocol)?x.href:''}catch(e){return''}}
 function hostOf(u){try{return new URL(u).hostname.replace(/^www\./,'')}catch(e){return u}}
 function relDay(s){const d=diffDays(today(),s);if(d===0)return'today';if(d===1)return'tomorrow';if(d===-1)return'yesterday';return d>0?`in ${d} days`:`${-d} days ago`}
@@ -429,7 +475,7 @@ function defaults(){const t=today();return{
   weights:Object.fromEntries(Object.entries(EX).map(([k,e])=>[k,e.d])),
   fridaySwap:false, checks:{date:t,map:{}}, wlog:[],
   routines:Object.fromEntries(Object.entries(ROUT).map(([r,list])=>[r,list.map(it=>({id:uid(),k:it.k,name:EX[it.k].n,alt:it.alt||'',sets:it.sets,reps:it.reps,start:it.s||EX[it.k].s}))])),
-  spend:[], shop:[], taskSort:'due',
+  spend:[], shop:[], taskSort:'due', appts:[], holidaysOff:[],
   food:{targets:{cal:2300,pMin:110,pMax:130,fMin:65,fMax:80},log:{},favs:FAVS.map(([n,c,p,f,cb])=>({id:uid(),name:n,cal:c,p,f,c:cb})),weighins:[]},
   tasks:[
     {id:uid(),title:'Example: reply to project emails',due:t,pri:'high',done:false,links:[{id:uid(),url:'https://mail.google.com',label:'Inbox'}]},
@@ -518,7 +564,7 @@ window.addEventListener('online',()=>{if(sync.ref){if(getMeta().dirty)push();els
 window.addEventListener('offline',()=>{if(sync.ref)setStatus('offline')});
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&sync.timer)push()});
 window.addEventListener('pagehide',()=>{if(sync.timer)push()});
-const ui={edit:null,buying:null,spendMonth:null,linkFor:null,view:'home',rt:null,foodDate:today(),taskFilter:'open',travelTab:'trips',editTrip:null,confirmTrip:null};
+const ui={edit:null,buying:null,spendMonth:null,linkFor:null,view:'home',rt:null,foodDate:today(),taskFilter:'open',travelTab:'cal',calMonth:null,calSel:null,apptDate:null,editTrip:null,confirmTrip:null};
 
 let toastTimer;
 function toast(msg){const t=$('#toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),2400)}
@@ -541,7 +587,7 @@ function balanceOn(date){return earned(date)-ptoUsed().filter(u=>u.date<=date).r
 function nextAccrual(from){const d=parse(from);let y=d.getFullYear(),m=d.getMonth();for(let i=0;i<36;i++){const e=iso(new Date(y,m,lastDay(y,m)));if(e>from&&e>S.pto.startDate)return e;m++;if(m>11){m=0;y++}}return from}
 /* personal hours: perYear on Jan 1; the first year starts from the left value */
 function personalLeft(y){const P=S.personal,y0=n0(P.year)||y;if(y<y0)return 0;
-  const used=yy=>P.entries.filter(e=>e.date&&+e.date.slice(0,4)===yy).reduce((a,e)=>a+n0(e.hours),0);
+  const used=yy=>P.entries.concat(S.appts||[]).filter(e=>e.date&&+e.date.slice(0,4)===yy).reduce((a,e)=>a+n0(e.hours),0);
   if(P.carry){let b=n0(P.left);for(let k=y0;k<=y;k++){if(k>y0)b+=n0(P.perYear);b-=used(k)}return b}
   return (y===y0?n0(P.left):n0(P.perYear))-used(y)}
 function availableBefore(trip){return earned(trip.start)-ptoUsed().filter(u=>u.date<trip.start&&u.id!==trip.id).reduce((a,u)=>a+u.days,0)}
@@ -592,9 +638,9 @@ function monthName(mo){return parse(mo+'-01').toLocaleDateString(undefined,{mont
 const HKEY='ridgeline-device-hidden-tiles';
 function hiddenTiles(){try{return JSON.parse(ls().getItem(HKEY))||[]}catch(e){return[]}}
 function setHiddenTiles(a){try{ls().setItem(HKEY,JSON.stringify(a))}catch(e){}}
-const TILE_NAMES={workout:'Workout',food:'Calories',tasks:'Work tasks',travel:'Next trip',daysoff:'Time off',finance:'Monthly money',shop:'Shopping list'};
+const TILE_NAMES={workout:'Workout',food:'Calories',tasks:'Work tasks',daysoff:'Time off',finance:'Monthly money',shop:'Shopping list'};
 function applyNavHidden(){const h=hiddenTiles();document.querySelectorAll('#nav a[data-go]').forEach(a=>{const g=a.dataset.go;
-  a.hidden=g==='home'?false:g==='travel'?(h.includes('travel')&&h.includes('daysoff')):h.includes(g)})}
+  a.hidden=g==='home'?false:g==='travel'?h.includes('daysoff'):h.includes(g)})}
 function tile(v,c,label,big,sub){if(hiddenTiles().includes(v))return'';return`<a class="tile" href="#${v}" data-act="go" data-go="${v}" style="--c:var(${c})"><div class="tile-head"><span class="blaze"></span><span class="eyebrow">${label}</span><span class="arrow" aria-hidden="true">→</span></div><div class="big">${big}</div><div class="sub">${sub}</div></a>`}
 function renderHome(){
   const t=today(),h=new Date().getHours();
@@ -613,14 +659,13 @@ function renderHome(){
     ${tile('workout','--b-workout','Workout · today',wBig,wSub)}
     ${tile('food','--b-food','Calories · today',`<span class="num">${Math.round(tot.cal).toLocaleString()}</span> <span class="muted" style="font-size:18px">/ ${tg.cal.toLocaleString()}</span>`,`Protein ${Math.round(tot.p)} g of ${tg.pMin}–${tg.pMax} g`)}
     ${tile('tasks','--b-tasks','Work tasks',`${open.length} open`,tSub)}
-    ${tile('travel','--b-travel','Next trip',nt?esc(nt.name):'No trips yet',nt?`${nt.start<=t?'Underway':relDay(nt.start).replace(/^./,c=>c.toUpperCase())}${nt.dest?' · '+esc(nt.dest):''}`:'Plan one in Travel')}
-    ${tile('daysoff','--b-pto','Time off',`${r1(balanceOn(t))} days`,`${r1(personalLeft(+t.slice(0,4)))} personal hours left · +${n0(S.pto.per)} days on ${fmt(nextAccrual(t))}`)}
+    ${tile('daysoff','--b-pto','Time off',`${r1(balanceOn(t))} days off`,`${r1(personalLeft(+t.slice(0,4)))} personal hours left · ${nt?(nt.start<=t?`On ${esc(nt.name)} now`:`Next trip: ${esc(nt.name)}, ${relDay(nt.start)}`):(()=>{const e=upcomingEvents(t,90).find(x=>x.date>=t);return e?`Next: ${esc(e.label)}, ${relDay(e.date)}`:'Nothing planned'})()}`)}
     ${tile('finance','--b-fin','Monthly money',`${money(ft.sal)}<span class="muted" style="font-size:16px"> /mo</span>`,`${money(ft.left-monthSpent(t.slice(0,7)))} left to spend this month`)}
     ${tile('shop','--b-shop','Shopping list',`${S.shop.length} ${S.shop.length===1?'item':'items'}`,S.shop.length?esc(S.shop.slice(0,3).map(x=>x.name).join(', '))+(S.shop.length>3?', …':''):'Nothing to buy right now')}
   </div>
   ${hiddenTiles().length===Object.keys(TILE_NAMES).length?'<div class="empty">All sections are hidden on this device. Show them again below.</div>':''}
   <details class="panel" id="homeEdit"${ui.homeEdit?' open':''}><summary style="cursor:pointer;font-weight:600">Customize home screen on this device</summary>
-    <p class="muted" style="font-size:13px;margin-top:8px">Hidden sections disappear from this device's home screen and top menu only. Your other devices are not affected, and hidden sections keep syncing and updating. Travel leaves the menu when both Next trip and Time off are hidden.</p>
+    <p class="muted" style="font-size:13px;margin-top:8px">Hidden sections disappear from this device's home screen and top menu only. Your other devices are not affected, and hidden sections keep syncing and updating. </p>
     <div class="chips" style="margin-top:10px">${Object.entries(TILE_NAMES).map(([k,n])=>{const h=hiddenTiles().includes(k);return`<label class="chip" style="cursor:pointer;gap:8px;padding:6px 12px"><input type="checkbox" data-chg="tileShow" data-k="${k}" ${h?'':'checked'}> ${n}</label>`}).join('')}</div>
   </details>`;
 }
@@ -822,14 +867,76 @@ function renderTasks(){
 /* ---------- TRAVEL + DAYS OFF ---------- */
 function renderTravel(){
   const tab=ui.travelTab;
+  const T=[['cal','Calendar'],['trips','Trips'],['appts','Appointments'],['daysoff','Days off']];
   $('#v-travel').innerHTML=`
-  <div class="view-head"><h1><span class="blaze" style="--c:var(--b-travel)"></span>Travel</h1>
-    <div class="right"><div class="seg">
-      <button class="${tab==='trips'?'on':''}" data-act="travelTab" data-tab="trips">Trips</button>
-      <button class="${tab==='daysoff'?'on':''}" data-act="travelTab" data-tab="daysoff">Days off</button></div></div></div>
-  <div id="travelBody">${tab==='trips'?tripsHTML():daysOffHTML()}</div>`;
+  <div class="view-head"><h1><span class="blaze" style="--c:var(--b-pto)"></span>Time off</h1>
+    <div class="right"><div class="seg">${T.map(([k,n])=>`<button class="${tab===k?'on':''}" data-act="travelTab" data-tab="${k}">${n}</button>`).join('')}</div></div></div>
+  <div id="travelBody">${tab==='trips'?tripsHTML():tab==='appts'?apptsHTML():tab==='daysoff'?daysOffHTML():calendarHTML()}</div>`;
   if(tab==='daysoff')updateProj();
 }
+/* ---------- calendar ---------- */
+function calEvents(from,to){const ev=[];
+  holidaysIn(from,to).forEach(h=>ev.push({date:h.date,type:'hol',label:h.name}));
+  S.trips.forEach(t=>{if(!t.start)return;const e=t.end&&t.end>=t.start?t.end:t.start,stop=e>to?to:e;for(let d=t.start<from?from:t.start;d<=stop;d=addDays(d,1))ev.push({date:d,type:'trip',label:t.name,cont:d!==t.start,trip:t})});
+  (S.appts||[]).forEach(a=>{if(a.date>=from&&a.date<=to)ev.push({date:a.date,type:'appt',label:a.title,short:(a.time?fmtTime(a.time).replace(':00','').replace(/\s/g,'').toLowerCase()+' ':'')+a.title,appt:a})});
+  S.pto.entries.forEach(x=>{if(x.date>=from&&x.date<=to)ev.push({date:x.date,type:'off',label:x.note||'Time off',sub:`Time off · ${plural(n0(x.days),'day')}`})});
+  S.personal.entries.forEach(x=>{if(x.date>=from&&x.date<=to)ev.push({date:x.date,type:'off',label:x.note||'Personal time',sub:`Personal hours · ${r1(n0(x.hours))} h`})});
+  accruals(to).forEach(d=>{if(d>=from)ev.push({date:d,type:'acc',label:`+${n0(S.pto.per)} days off`,sub:'Monthly days off added'})});
+  return ev}
+function upcomingEvents(from,days){const to=addDays(from,days),out=[];
+  holidaysIn(from,to).forEach(h=>out.push({date:h.date,type:'hol',label:h.name}));
+  S.trips.forEach(t=>{if(t.start&&(t.end||t.start)>=from&&t.start<=to)out.push({date:t.start<from?from:t.start,type:'trip',label:t.name,trip:t})});
+  (S.appts||[]).forEach(a=>{if(a.date>=from&&a.date<=to)out.push({date:a.date,type:'appt',label:a.title,time:a.time,appt:a})});
+  return out.sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:(a.time||'')<(b.time||'')?-1:1)}
+const linkChips=(L,icon)=>(L||[]).length?`<div class="links">${L.map(l=>`<span class="lnk"><a href="${esc(l.url)}" target="_blank" rel="noopener noreferrer" title="${esc(l.url)}">${icon} ${esc(l.label||hostOf(l.url))}</a></span>`).join('')}</div>`:'';
+function evDetail(e){const sub=e.type==='hol'?'Work holiday':e.type==='trip'?['Trip',e.trip.dest?esc(e.trip.dest):'',e.trip.start&&e.trip.end?`${fmt(e.trip.start)} – ${fmt(e.trip.end)}`:''].filter(Boolean).join(' · ')
+  :e.type==='appt'?['Appointment',e.appt.time?fmtTime(e.appt.time):'',e.appt.where?esc(e.appt.where):''].filter(Boolean).join(' · '):esc(e.sub||'');
+  return`<div class="day-row"><span class="dot ev-${e.type}"></span><div class="day-main"><b>${esc(e.label)}</b><small>${sub}</small>${e.type==='trip'?linkChips(e.trip.links,'✈'):''}${e.type==='appt'&&e.appt.note?`<small>${esc(e.appt.note)}</small>`:''}</div></div>`}
+function calendarHTML(){
+  const t=today(),mo=ui.calMonth||t.slice(0,7),sel=ui.calSel||t,f0=mo+'-01',fd=parse(f0);
+  const start=addDays(f0,-fd.getDay()),last=iso(new Date(fd.getFullYear(),fd.getMonth()+1,0)),end=addDays(last,6-parse(last).getDay());
+  const by={},ORD={hol:0,trip:1,appt:2,off:3,acc:4};calEvents(start<sel?start:sel,end>sel?end:sel).forEach(e=>(by[e.date]=by[e.date]||[]).push(e));
+  Object.values(by).forEach(L=>L.sort((a,b)=>ORD[a.type]-ORD[b.type]));
+  let cells='';for(let d=start;d<=end;d=addDays(d,1)){const L=by[d]||[],w=parse(d).getDay();
+    cells+=`<button type="button" class="cal-day${d.slice(0,7)!==mo?' out':''}${d===t?' today':''}${d===sel?' sel':''}${w===0||w===6?' wknd':''}" data-act="calSel" data-d="${d}" aria-pressed="${d===sel}" aria-label="${fmtW(d)}${L.length?': '+esc(L.map(e=>e.label).join(', ')):''}"><span class="cal-n">${parse(d).getDate()}</span><span class="cal-evs">${L.slice(0,3).map(e=>`<span class="ev ev-${e.type}${e.cont?' cont':''}">${e.cont&&w!==0?'&nbsp;':esc(e.short||e.label)}</span>`).join('')}${L.length>3?`<span class="more">+${L.length-3} more</span>`:''}</span></button>`}
+  const selL=by[sel]||[],up=upcomingEvents(t,60).slice(0,8),yr=+t.slice(0,4);
+  return`<div class="stack" style="gap:18px">
+  <div class="panel">
+    <div class="panel-head"><h2>${monthName(mo)}</h2><div class="right"><button class="btn ghost sm" data-act="calMove" data-n="-1" aria-label="Previous month">‹</button>${mo!==t.slice(0,7)?'<button class="btn ghost sm" data-act="calMove" data-n="0">Today</button>':''}<button class="btn ghost sm" data-act="calMove" data-n="1" aria-label="Next month">›</button></div></div>
+    <div class="cal-head" aria-hidden="true">${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(x=>`<span>${x}</span>`).join('')}</div>
+    <div class="cal">${cells}</div>
+    <div class="legend" style="margin-top:12px"><span><i class="ev-trip"></i>Trip</span><span><i class="ev-hol"></i>Work holiday</span><span><i class="ev-appt"></i>Appointment</span><span><i class="ev-off"></i>Time off or personal hours</span><span><i class="ev-acc"></i>Days off added</span></div>
+  </div>
+  <div class="grid2">
+    <div class="panel stack"><div class="panel-head" style="margin:0"><h2>${fmtW(sel)}</h2><span class="right muted" style="font-size:13px">${relDay(sel)}</span></div>
+      ${selL.length?`<div>${selL.map(evDetail).join('')}</div>`:'<p class="muted">Nothing planned this day.</p>'}
+      <div class="row"><button class="btn sm" data-act="calAddAppt" data-d="${sel}">+ Appointment this day</button><button class="btn ghost sm" data-act="calAddTrip" data-d="${sel}">+ Trip starting this day</button></div></div>
+    <div class="panel stack"><div class="panel-head" style="margin:0"><h2>Coming up</h2><span class="right muted" style="font-size:13px">next 60 days</span></div>
+      ${up.length?`<div>${up.map(e=>`<div class="up-row"><span class="up-date"><b>${fmt(e.date)}</b><small>${fmt(e.date,{weekday:'short'})}</small></span><span class="dot ev-${e.type}"></span><span class="up-main"><b>${esc(e.label)}</b><small>${e.type==='hol'?'Work holiday':e.type==='trip'?(e.trip.start<t?'Trip underway':'Trip')+(e.trip.dest?' · '+esc(e.trip.dest):''):'Appointment'+(e.time?' · '+fmtTime(e.time):'')+(e.appt.where?' · '+esc(e.appt.where):'')} · ${relDay(e.date)}</small></span></div>`).join('')}</div>`:'<p class="muted">Nothing in the next 60 days.</p>'}
+      <div class="row" style="gap:18px;padding-top:10px;border-top:1px solid var(--line);align-items:center"><span><b class="num">${r1(balanceOn(t))}</b> <span class="muted">days off</span></span><span><b class="num">${r1(personalLeft(yr))}</b> <span class="muted">personal hours</span></span><span style="flex:1"></span><button class="btn ghost sm" data-act="travelTab" data-tab="daysoff">See balances</button></div></div>
+  </div></div>`}
+
+/* ---------- appointments ---------- */
+function apptForm(a){const ed=!!a,v=a||{},p=ed?'e':'ap';return`<form class="stack${ed?' edit-form':''}" data-form="${ed?'ed-appt':'appt'}"${ed?` data-id="${a.id}"`:''}${ed?'':' style="margin-top:12px"'}>
+  <div class="row"><label class="f wide">What<input id="${p}-title" name="title" required value="${esc(v.title)}" placeholder="e.g. Doctor checkup, dentist, haircut"></label>
+    <label class="f wide">Where (optional)<input id="${p}-where" name="where" value="${esc(v.where)}" placeholder="Office or address"></label></div>
+  <div class="row"><label class="f">Date<input id="${p}-date" name="date" type="date" required value="${v.date||ui.apptDate||today()}"></label>
+    <label class="f">Time (optional)<input id="${p}-time" name="time" type="time" value="${v.time||''}"></label>
+    <label class="f">Personal hours used<input id="${p}-hours" name="hours" type="number" min="0" step="0.25" inputmode="decimal" value="${n0(v.hours)?n0(v.hours):''}" placeholder="0"></label></div>
+  <label class="f">Note (optional)<input id="${p}-note" name="note" value="${esc(v.note)}" placeholder="e.g. bring insurance card"></label>
+  ${ed?edActions:'<div class="row" style="align-items:center"><span class="muted" style="font-size:13px;flex:1 1 220px">Personal hours used come out of your yearly personal hours.</span><button class="btn">Add appointment</button></div>'}</form>`}
+function apptsHTML(){
+  const t=today(),A=(S.appts||[]).slice().sort((a,b)=>(a.date+(a.time||''))<(b.date+(b.time||''))?-1:1),up=A.filter(a=>a.date>=t),past=A.filter(a=>a.date<t).reverse();
+  const row=a=>isEd('appt',a.id)?apptForm(a):`<div class="task"><span class="up-date"><b>${fmt(a.date)}</b><small>${fmt(a.date,{weekday:'short'})}</small></span>
+    <div class="task-main"><b>${esc(a.title)}</b><span class="muted" style="font-size:13px">${[a.time?fmtTime(a.time):'',a.where?esc(a.where):'',n0(a.hours)?`${r1(n0(a.hours))} personal ${n0(a.hours)===1?'hour':'hours'}`:''].filter(Boolean).join(' · ')||'&nbsp;'}</span>${a.note?`<span style="font-size:13px">${esc(a.note)}</span>`:''}</div>
+    ${a.date>=t?`<span class="chip">${relDay(a.date)}</span>`:''}${edBtn('appt',a.id,a.title)}<button class="x" data-act="delAppt" data-id="${a.id}" aria-label="Delete ${esc(a.title)}">×</button></div>`;
+  return`<div class="stack" style="gap:18px">
+  <div class="panel"><h2>Add an appointment</h2>${apptForm(null)}</div>
+  <div class="panel"><div class="panel-head"><h2>Upcoming</h2><span class="right muted">${plural(up.length,'appointment')}</span></div>
+    ${up.length?`<div>${up.map(row).join('')}</div>`:'<div class="empty">No upcoming appointments. Add a doctor, dentist or any other appointment above.</div>'}</div>
+  ${past.length?`<details class="panel"${past.some(a=>isEd('appt',a.id))?' open':''}><summary style="cursor:pointer;font-weight:600">Past appointments · ${past.length}</summary><div style="margin-top:8px">${past.map(row).join('')}</div></details>`:''}
+  </div>`}
+
 function tripsHTML(){
   const t=today(),ed=ui.editTrip&&S.trips.find(x=>x.id===ui.editTrip),v=ed||{};
   const sorted=S.trips.slice().sort((a,b)=>(a.start||'')<(b.start||'')?-1:1);
@@ -843,6 +950,9 @@ function tripsHTML(){
       <button class="btn ${ui.confirmTrip===x.id?'danger':'ghost'} sm" data-act="delTrip" data-id="${x.id}">${ui.confirmTrip===x.id?'Confirm delete':'Delete'}</button></div></div>
       <div class="chips">${st}<span class="chip">${x.start?fmtW(x.start):'No dates'}${x.end&&x.end!==x.start?' – '+fmtW(x.end):''}</span>${nights?`<span class="chip">${plural(nights,'night')}</span>`:''}<span class="chip">${plural(n0(x.pto),'day')} off used</span>${proj}</div>
       ${x.notes?`<p style="white-space:pre-wrap">${esc(x.notes)}</p>`:''}
+      <div><span class="eyebrow">Flight and booking links</span>
+        ${(x.links||[]).length?`<div class="links" style="margin-top:6px">${x.links.map(l=>`<span class="lnk"><a href="${esc(l.url)}" target="_blank" rel="noopener noreferrer" title="${esc(l.url)}">✈ ${esc(l.label||hostOf(l.url))}</a><button class="x" data-act="delTripLink" data-trip="${x.id}" data-lid="${l.id}" aria-label="Remove link">×</button></span>`).join('')}</div>`:''}
+        <form class="row" data-form="tripLink" data-trip="${x.id}" style="margin-top:6px"><input id="tl-url-${x.id}" name="url" inputmode="url" autocomplete="off" placeholder="Paste a flight or booking link" style="flex:2 1 200px"><input id="tl-label-${x.id}" name="label" placeholder="Name, e.g. Flight out" style="flex:1 1 140px"><button class="btn ghost sm">Add link</button></form></div>
       <div><span class="eyebrow">Checklist · ${doneN}/${x.items.length}</span>
         <div style="margin-top:4px">${x.items.map(i=>isEd('item',i.id)?`<form class="row edit-form" data-form="ed-item" data-trip="${x.id}" data-id="${i.id}"><input id="e-text" name="text" required value="${esc(i.text)}" style="flex:1 1 180px">${edActions}</form>`:`<div class="check${i.done?' done':''}"><input type="checkbox" id="ci-${i.id}" data-chg="item" data-trip="${x.id}" data-id="${i.id}" ${i.done?'checked':''}><span><label for="ci-${i.id}">${esc(i.text)}</label></span>${edBtn('item',i.id,i.text)}<button class="x" data-act="delItem" data-trip="${x.id}" data-id="${i.id}" aria-label="Remove item">×</button></div>`).join('')}</div>
         <form class="row" data-form="item" data-trip="${x.id}" style="margin-top:6px"><input id="ni-${x.id}" name="text" placeholder="Add a packing or to-do item" style="flex:1 1 180px"><button class="btn ghost sm">Add</button></form></div></div>`};
@@ -854,8 +964,9 @@ function tripsHTML(){
       <div class="row"><label class="f">Leave<input id="tr-start" name="start" type="date" required value="${v.start||''}" data-inp="tripDates"></label>
         <label class="f">Return<input id="tr-end" name="end" type="date" required value="${v.end||''}" data-inp="tripDates"></label>
         <label class="f">Days off used<input id="tr-pto" name="pto" type="number" min="0" step="0.5" value="${ed?n0(v.pto):''}" data-inp="ptoTouched"></label></div>
-      <label class="f">Notes<textarea id="tr-notes" name="notes" placeholder="Flights, lodging, confirmation numbers, ideas">${esc(v.notes)}</textarea></label>
-      <div class="row" style="align-items:center"><span class="muted" style="font-size:13px;flex:1 1 200px">Days off fills in with the weekdays between your dates. Change it if you need to.</span>
+      <label class="f">${ed?'Add another flight info link (optional)':'Flight info link (optional)'}<input id="tr-flight" name="flight" inputmode="url" autocomplete="off" placeholder="Paste the link to your flight details"></label>
+      <label class="f">Notes<textarea id="tr-notes" name="notes" placeholder="Lodging, confirmation numbers, ideas">${esc(v.notes)}</textarea></label>
+      <div class="row" style="align-items:center"><span class="muted" style="font-size:13px;flex:1 1 200px">Days off fills in with the workdays between your dates (weekdays that aren't work holidays). Change it if you need to.</span>
         ${ed?'<button type="button" class="btn ghost" data-act="cancelEdit">Cancel</button>':''}<button class="btn">${ed?'Save changes':'Add trip'}</button></div>
     </form></div>
   ${up.length?up.map(card).join(''):'<div class="empty">No upcoming trips. Plan one above.</div>'}
@@ -876,7 +987,7 @@ function daysOffHTML(){
     return`<tr class="${f?'future':''}"><td>${fmtY(e.date)}${f?' <span class="chip" style="font-size:11px">upcoming</span>':''}</td><td style="min-width:140px">${esc(e.label)}${e.kind==='trip'?' <span class="muted">(trip)</span>':''}</td>
       <td class="r ${e.delta>=0?'plus':'minus'}">${e.delta>=0?'+':'−'}${r1(Math.abs(e.delta))}</td><td class="r"><b>${r1(run)}</b></td>
       <td class="r" style="white-space:nowrap">${e.kind==='entry'?`${edBtn('pto',e.id,'time off')}<button class="x" data-act="delPto" data-id="${e.id}" aria-label="Remove">×</button>`:e.kind==='trip'?`<button class="btn ghost sm" data-act="editTripFrom" data-id="${e.id}">Edit trip</button>`:''}</td></tr>`}).join('');
-  const P=S.personal,yr=+t.slice(0,4),pl=personalLeft(yr),pUsed=P.entries.filter(e=>e.date&&+e.date.slice(0,4)===yr).sort((a,b)=>a.date<b.date?1:-1);
+  const P=S.personal,yr=+t.slice(0,4),pl=personalLeft(yr),pUsed=P.entries.concat((S.appts||[]).filter(a=>n0(a.hours)>0).map(a=>({id:a.id,date:a.date,hours:a.hours,note:a.title,appt:true}))).filter(e=>e.date&&+e.date.slice(0,4)===yr).sort((a,b)=>a.date<b.date?1:-1);
   const pCap=P.carry?Math.max(pl,n0(P.perYear)):(yr===n0(P.year)?Math.max(n0(P.left),n0(P.perYear)):n0(P.perYear));
   return`<div class="stack" style="gap:18px">
   <div class="grid2">
@@ -902,7 +1013,7 @@ function daysOffHTML(){
       <label class="f tiny">Hours<input id="ph-hours" name="hours" type="number" min="0.25" step="0.25" value="1" required></label>
       <label class="f wide">Note<input id="ph-note" name="note" placeholder="e.g. Doctor visit"></label>
       <button class="btn">Log hours</button></form>
-    ${pUsed.length?`<div class="tbl-wrap"><table><tbody>${pUsed.map(e=>isEd('pers',e.id)?`<tr><td colspan="4">${entryForm('pers',e,'hours','Hours','0.25')}</td></tr>`:`<tr><td>${fmtY(e.date)}</td><td>${esc(e.note||'Personal time')}</td><td class="r minus">−${r1(n0(e.hours))} h</td><td class="r" style="white-space:nowrap">${edBtn('pers',e.id,'personal hours')}<button class="x" data-act="delPersonal" data-id="${e.id}" aria-label="Remove">×</button></td></tr>`).join('')}</tbody></table></div>`:'<p class="muted" style="font-size:13px">Hours you log this year appear here.</p>'}
+    ${pUsed.length?`<div class="tbl-wrap"><table><tbody>${pUsed.map(e=>e.appt?`<tr><td>${fmtY(e.date)}</td><td>${esc(e.note)} <span class="muted">(appointment)</span></td><td class="r minus">−${r1(n0(e.hours))} h</td><td class="r"><button class="btn ghost sm" data-act="apptEditFrom" data-id="${e.id}">Edit</button></td></tr>`:isEd('pers',e.id)?`<tr><td colspan="4">${entryForm('pers',e,'hours','Hours','0.25')}</td></tr>`:`<tr><td>${fmtY(e.date)}</td><td>${esc(e.note||'Personal time')}</td><td class="r minus">−${r1(n0(e.hours))} h</td><td class="r" style="white-space:nowrap">${edBtn('pers',e.id,'personal hours')}<button class="x" data-act="delPersonal" data-id="${e.id}" aria-label="Remove">×</button></td></tr>`).join('')}</tbody></table></div>`:'<p class="muted" style="font-size:13px">Hours you log this year appear here.</p>'}
   </div>
   </div>
   <div class="grid2">
@@ -917,6 +1028,10 @@ function daysOffHTML(){
         <button class="btn">Add</button></form>
       <p class="muted" style="font-size:13px">For days off that are not part of a trip. Trips you add count automatically.</p></div>
   </div>
+  <div class="panel"><h2>Work holidays</h2>
+    <p class="muted" style="font-size:13px;margin-top:6px">These show on your calendar every year. When one falls on a weekend it moves to the Friday before or the Monday after. Holidays don't use days off and aren't counted in a trip's days off. Untick any your job doesn't give.</p>
+    <div class="tbl-wrap" style="margin-top:8px"><table><thead><tr><th></th><th>Holiday</th><th>${yr}</th><th>${yr+1}</th></tr></thead><tbody>${HOLIDAYS.map(h=>{const on=!(S.holidaysOff||[]).includes(h.k),cell=y=>{const r=h.f(y);return`${fmt(r.date,Object.assign({weekday:'short',month:'short',day:'numeric'},+r.date.slice(0,4)!==y?{year:'numeric'}:{}))}${r.obs?' <span class="muted">(observed)</span>':''}`};
+      return`<tr class="${on?'':'future'}"><td style="width:34px"><input type="checkbox" id="hol-${h.k}" data-chg="hol" data-k="${h.k}" ${on?'checked':''}></td><td><label for="hol-${h.k}">${h.n}</label></td><td style="white-space:nowrap">${cell(yr)}</td><td style="white-space:nowrap">${cell(yr+1)}</td></tr>`}).join('')}</tbody></table></div></div>
   <div class="panel"><h2>Days off history</h2><div class="tbl-wrap" style="margin-top:8px"><table>
     <thead><tr><th>Date</th><th>What</th><th class="r">Change</th><th class="r">Balance</th><th></th></tr></thead><tbody>${rows}</tbody></table></div></div>
   <details class="panel"><summary style="cursor:pointer;font-weight:600">Balance settings</summary>
@@ -1075,7 +1190,14 @@ const ACT={
   delLink:a=>{const x=S.tasks.find(t=>t.id===a.dataset.id);if(!x)return;x.links=(x.links||[]).filter(l=>l.id!==a.dataset.lid);save();renderTasks()},
   delPersonal:a=>{S.personal.entries=S.personal.entries.filter(e=>e.id!==a.dataset.id);save();renderTravel();updateProj()},
   clearDone:()=>{S.tasks=S.tasks.filter(x=>!x.done);save();renderTasks()},
-  travelTab:a=>{ui.travelTab=a.dataset.tab;try{history.replaceState(null,'','#'+(ui.travelTab==='daysoff'?'daysoff':'travel'))}catch(e){}renderTravel();if(ui.travelTab==='daysoff')updateProj()},
+  travelTab:a=>{ui.travelTab=a.dataset.tab;ui.edit=null;try{history.replaceState(null,'','#'+(ui.travelTab==='daysoff'?'daysoff':'travel'))}catch(e){}renderTravel();window.scrollTo({top:Math.min(window.scrollY,$('#v-travel').offsetTop)})},
+  calMove:a=>{const n=+a.dataset.n;if(n===0){ui.calMonth=null;ui.calSel=null}else ui.calMonth=shiftMonth(ui.calMonth||today().slice(0,7),n);renderTravel()},
+  calSel:a=>{ui.calSel=a.dataset.d;ui.calMonth=a.dataset.d.slice(0,7);renderTravel()},
+  calAddAppt:a=>{ui.apptDate=a.dataset.d;ui.travelTab='appts';ui.edit=null;renderTravel();const el=$('#ap-title');if(el)el.focus()},
+  calAddTrip:a=>{ui.travelTab='trips';ui.editTrip=null;renderTravel();const s=$('#tr-start');if(s){s.value=a.dataset.d}const n=$('#tr-name');if(n)n.focus()},
+  apptEditFrom:a=>{ui.travelTab='appts';ui.edit='appt:'+a.dataset.id;renderTravel();const el=$('#e-title');if(el)el.focus()},
+  delAppt:a=>{S.appts=S.appts.filter(x=>x.id!==a.dataset.id);save();renderTravel();toast('Appointment deleted')},
+  delTripLink:a=>{const tr=S.trips.find(x=>x.id===a.dataset.trip);if(!tr)return;tr.links=(tr.links||[]).filter(l=>l.id!==a.dataset.lid);save();renderTravel()},
   editTrip:a=>{ui.editTrip=a.dataset.id;ui.confirmTrip=null;renderTravel();window.scrollTo({top:$('#v-travel').offsetTop-10})},
   cancelEdit:()=>{ui.editTrip=null;renderTravel()},
   delTrip:a=>{const id=a.dataset.id;if(ui.confirmTrip!==id){ui.confirmTrip=id;renderTravel();return}S.trips=S.trips.filter(x=>x.id!==id);ui.confirmTrip=null;if(ui.editTrip===id)ui.editTrip=null;save();renderTravel();toast('Trip deleted')},
@@ -1104,6 +1226,7 @@ document.addEventListener('click',e=>{const a=e.target.closest('[data-act]');if(
 document.addEventListener('change',e=>{const el=e.target,k=el.dataset&&el.dataset.chg;if(!k)return;
   if(k==='weight'){S.weights[el.dataset.k]=el.value;save();const it=[].concat(S.routines.A||[],S.routines.B||[]).find(x=>x.k===el.dataset.k);toast(`${it?it.name:'Weight'}: ${wLabel(el.value)}`)}
   else if(k==='tileShow'){let h=hiddenTiles().filter(x=>x!==el.dataset.k);if(!el.checked)h.push(el.dataset.k);setHiddenTiles(h);ui.homeEdit=true;applyNavHidden();renderHome()}
+  else if(k==='hol'){const off=(S.holidaysOff||[]).filter(x=>x!==el.dataset.k);if(!el.checked)off.push(el.dataset.k);S.holidaysOff=off;save();renderTravel()}
   else if(k==='shopCheck'){ui.buying=el.dataset.id;ui.edit=null;renderShop();const b=$('#buy-amt');if(b)b.focus()}
   else if(k==='foodDate'){if(el.value){ui.foodDate=el.value;renderFood()}}
   else if(k==='target'){S.food.targets[el.dataset.k]=n0(el.value);save();renderFood()}
@@ -1134,9 +1257,14 @@ document.addEventListener('submit',e=>{const fm=e.target,k=fm.dataset&&fm.datase
     (x.links=x.links||[]).push({id:uid(),url:u,label:(v.label||'').trim()});ui.linkFor=null;save();renderTasks();toast('Link added')}
   else if(k==='personal'){S.personal.entries.push({id:uid(),date:v.date,hours:n0(v.hours),note:(v.note||'').trim()});save();renderTravel();updateProj();toast('Personal hours logged')}
   else if(k==='trip'){if(v.end<v.start){toast('The return date is before the leave date. Fix the dates and try again.');return}
+    let fl=null;if((v.flight||'').trim()){const u=normUrl(v.flight);if(!u){toast('The flight link is not a web address. Check it, or leave it empty.');return}fl={id:uid(),url:u,label:'Flight info'}}
     const data={name:v.name.trim(),dest:v.dest.trim(),start:v.start,end:v.end,pto:v.pto===''?weekdays(v.start,v.end):n0(v.pto),notes:v.notes};
-    if(ui.editTrip){const x=S.trips.find(t=>t.id===ui.editTrip);if(x)Object.assign(x,data);ui.editTrip=null;toast('Trip saved')}
-    else{S.trips.push({id:uid(),items:[],...data});toast('Trip added')}save();renderTravel()}
+    if(ui.editTrip){const x=S.trips.find(t=>t.id===ui.editTrip);if(x){Object.assign(x,data);if(fl)(x.links=x.links||[]).push(fl)}ui.editTrip=null;toast('Trip saved')}
+    else{S.trips.push({id:uid(),items:[],links:fl?[fl]:[],...data});toast('Trip added to your calendar')}save();renderTravel()}
+  else if(k==='tripLink'){const tr=S.trips.find(x=>x.id===fm.dataset.trip),u=normUrl(v.url);if(!tr)return;if(!u){toast('That link is not a web address. Check it and try again.');return}
+    (tr.links=tr.links||[]).push({id:uid(),url:u,label:(v.label||'').trim()});save();renderTravel();toast('Link added')}
+  else if(k==='appt'){const title=(v.title||'').trim();if(!title)return;(S.appts=S.appts||[]).push({id:uid(),title,where:(v.where||'').trim(),date:v.date||today(),time:v.time||'',hours:n0(v.hours),note:(v.note||'').trim()});
+    ui.apptDate=null;ui.calSel=v.date;ui.calMonth=(v.date||today()).slice(0,7);save();renderTravel();toast(`Added ${title} on ${fmtW(v.date)}`)}
   else if(k==='item'){const tr=S.trips.find(x=>x.id===fm.dataset.trip),txt=(v.text||'').trim();if(!tr||!txt)return;tr.items.push({id:uid(),text:txt,done:false});save();renderTravel();const n=$('#ni-'+tr.id);if(n)n.focus()}
   else if(k==='spend'){const name=(v.name||'').trim();if(!name)return;S.spend.push({id:uid(),date:v.date||today(),name,amount:Math.round(n0(v.amount)*100)/100});ui.spendMonth=(v.date||today()).slice(0,7)===today().slice(0,7)?null:(v.date||'').slice(0,7);save();renderFinance();toast(`Added ${name}`);const n=$('#sp-name');if(n)n.focus()}
   else if(k==='shop'){const name=(v.name||'').trim();if(!name)return;S.shop.push({id:uid(),name,note:(v.note||'').trim(),added:today()});save();renderShop();const n=$('#sh-name');if(n)n.focus()}
@@ -1151,6 +1279,7 @@ document.addEventListener('submit',e=>{const fm=e.target,k=fm.dataset&&fm.datase
     else if(kind==='pto'){x=find(S.pto.entries);if(x)Object.assign(x,{date:v.date||x.date,days:n0(v.qty),note:(v.note||'').trim()})}
     else if(kind==='pers'){x=find(S.personal.entries);if(x)Object.assign(x,{date:v.date||x.date,hours:n0(v.qty),note:(v.note||'').trim()})}
     else if(kind==='spend'){x=find(S.spend);if(x)Object.assign(x,{name:txt('name',x.name),amount:Math.round(n0(v.amount)*100)/100,date:v.date||x.date})}
+    else if(kind==='appt'){x=find(S.appts);if(x)Object.assign(x,{title:txt('title',x.title),where:(v.where||'').trim(),date:v.date||x.date,time:v.time||'',hours:n0(v.hours),note:(v.note||'').trim()})}
     else if(kind==='shop'){x=find(S.shop);if(x)Object.assign(x,{name:txt('name',x.name),note:(v.note||'').trim()})}
     ui.edit=null;if(x){save();toast('Saved')}render()}
   else if(k==='pto'){S.pto.entries.push({id:uid(),date:v.date,days:n0(v.days),note:(v.note||'').trim()});save();renderTravel();updateProj();toast('Time off added')}

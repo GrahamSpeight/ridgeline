@@ -556,7 +556,12 @@ function render(){
 }
 
 /* ---------- HOME ---------- */
-function tile(v,c,label,big,sub){return`<a class="tile" href="#${v}" data-act="go" data-go="${v}" style="--c:var(${c})"><div class="tile-head"><span class="blaze"></span><span class="eyebrow">${label}</span><span class="arrow" aria-hidden="true">→</span></div><div class="big">${big}</div><div class="sub">${sub}</div></a>`}
+/* home tiles hidden on THIS device only (not synced) */
+const HKEY='ridgeline-device-hidden-tiles';
+function hiddenTiles(){try{return JSON.parse(ls().getItem(HKEY))||[]}catch(e){return[]}}
+function setHiddenTiles(a){try{ls().setItem(HKEY,JSON.stringify(a))}catch(e){}}
+const TILE_NAMES={workout:'Workout',food:'Calories',tasks:'Work tasks',travel:'Next trip',daysoff:'Time off',finance:'Monthly money'};
+function tile(v,c,label,big,sub){if(hiddenTiles().includes(v))return'';return`<a class="tile" href="#${v}" data-act="go" data-go="${v}" style="--c:var(${c})"><div class="tile-head"><span class="blaze"></span><span class="eyebrow">${label}</span><span class="arrow" aria-hidden="true">→</span></div><div class="big">${big}</div><div class="sub">${sub}</div></a>`}
 function renderHome(){
   const t=today(),h=new Date().getHours();
   $('#greet-h').textContent=h<12?'Good morning':h<17?'Good afternoon':'Good evening';
@@ -577,7 +582,12 @@ function renderHome(){
     ${tile('travel','--b-travel','Next trip',nt?esc(nt.name):'No trips yet',nt?`${nt.start<=t?'Underway':relDay(nt.start).replace(/^./,c=>c.toUpperCase())}${nt.dest?' · '+esc(nt.dest):''}`:'Plan one in Travel')}
     ${tile('daysoff','--b-pto','Time off',`${r1(balanceOn(t))} days`,`${r1(personalLeft(+t.slice(0,4)))} personal hours left · +${n0(S.pto.per)} days on ${fmt(nextAccrual(t))}`)}
     ${tile('finance','--b-fin','Monthly money',`${money(ft.sal)}<span class="muted" style="font-size:16px"> /mo</span>`,ft.pct>100?`Over-assigned by ${r1(ft.pct-100)}%`:`${r1(ft.pct)}% assigned · ${money(ft.left)} unassigned`)}
-  </div>`;
+  </div>
+  ${hiddenTiles().length===Object.keys(TILE_NAMES).length?'<div class="empty">All sections are hidden on this device. Use the menu at the top, or show them again below.</div>':''}
+  <details class="panel" id="homeEdit"${ui.homeEdit?' open':''}><summary style="cursor:pointer;font-weight:600">Customize home screen on this device</summary>
+    <p class="muted" style="font-size:13px;margin-top:8px">Hidden sections disappear from this device's home screen only. They still sync, still update, and stay in the menu at the top.</p>
+    <div class="chips" style="margin-top:10px">${Object.entries(TILE_NAMES).map(([k,n])=>{const h=hiddenTiles().includes(k);return`<label class="chip" style="cursor:pointer;gap:8px;padding:6px 12px"><input type="checkbox" data-chg="tileShow" data-k="${k}" ${h?'':'checked'}> ${n}</label>`}).join('')}</div>
+  </details>`;
 }
 
 /* ---------- WORKOUT ---------- */
@@ -962,6 +972,7 @@ const ACT={
 document.addEventListener('click',e=>{const a=e.target.closest('[data-act]');if(!a)return;if(a.tagName==='A')e.preventDefault();const f=ACT[a.dataset.act];if(f)f(a,e)});
 document.addEventListener('change',e=>{const el=e.target,k=el.dataset&&el.dataset.chg;if(!k)return;
   if(k==='weight'){S.weights[el.dataset.k]=el.value;save();toast(`${EX[el.dataset.k].n}: ${wLabel(el.value)}`)}
+  else if(k==='tileShow'){let h=hiddenTiles().filter(x=>x!==el.dataset.k);if(!el.checked)h.push(el.dataset.k);setHiddenTiles(h);ui.homeEdit=true;renderHome()}
   else if(k==='foodDate'){if(el.value){ui.foodDate=el.value;renderFood()}}
   else if(k==='target'){S.food.targets[el.dataset.k]=n0(el.value);save();renderFood()}
   else if(k==='task'){const x=S.tasks.find(t=>t.id===el.dataset.id);if(x){x.done=el.checked;save();setTimeout(renderTasks,180)}}
